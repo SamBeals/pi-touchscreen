@@ -1,0 +1,28 @@
+{
+  "products": [
+    {
+      "slot_id": "S01",
+      "name": "Pink Press-On Nail Set",
+      "price_cents": 1800,
+      "qty": 4,
+      "enabled": true,
+      "image_url": null
+    },
+    {
+      "slot_id": "S02",
+      "name": "Floral Nail Set",
+      "price_cents": 2200,
+      "qty": 2,
+      "enabled": true,
+      "image_url": null
+    },
+    {
+      "slot_id": "S03",
+      "name": "Sold Out Demo",
+      "price_cents": 999,
+      "qty": 0,
+      "enabled": true,
+      "image_url": null
+    }
+  ]
+}

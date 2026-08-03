@@ -1,0 +1,35 @@
+[Unit]
+Description=SellMate Pi Touchscreen Kiosk
+Documentation=file:///home/sambeals/pi-touchscreen/README.md
+After=network-online.target graphical.target
+Wants=network-online.target
+# Prefer starting once a graphical session is up (Raspberry Pi OS desktop).
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+User=sambeals
+Group=sambeals
+WorkingDirectory=/home/sambeals/pi-touchscreen
+
+# Shared machine identity (MACHINE_ID, CLOUD_BASE). Required.
+EnvironmentFile=/etc/sellmate/machine.env
+# Optional touchscreen settings + credential paths (do not edit secrets into this unit).
+EnvironmentFile=-/etc/sellmate/touchscreen.env
+
+Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/sambeals/.Xauthority
+
+# Explicit venv interpreter from this repository.
+ExecStartPre=/bin/mkdir -p /home/sambeals/.local/share/sellmate-touchscreen
+ExecStart=/home/sambeals/pi-touchscreen/.venv/bin/python -m app
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillMode=mixed
+
+[Install]
+WantedBy=graphical.target
