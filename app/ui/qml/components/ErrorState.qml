@@ -1,4 +1,5 @@
 import QtQuick
+import SellMate 1.0
 
 Column {
     property string message: "Something went wrong"

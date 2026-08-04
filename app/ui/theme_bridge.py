@@ -1,24 +1,54 @@
-"""Expose ResolvedTheme to QML as a reactive object."""
+"""Expose ResolvedTheme to QML as a reactive object.
+
+Always holds a complete theme. Chrome/UI tokens provide the shared styling
+values components used to hardcode, so appearance stays consistent without
+per-component duplication.
+"""
 
 from __future__ import annotations
 
+from typing import Optional
+
 from PySide6.QtCore import Property, QObject, Signal
 
+from app.theme.loader import default_resolved_theme
 from app.theme.schema import ResolvedTheme
+
+# Shared UI chrome — matches the current SellMate light visual direction.
+# Kept on the bridge (not renter JSON) so every component gets complete values
+# even when a partial renter theme is loaded. Future schema versions may
+# surface these via theme.json without changing QML call sites.
+_CHROME = {
+    "border": "#E5E7EB",
+    "image_well": "#F9FAFB",
+    "warning_surface": "#FEF3C7",
+    "warning_border": "#FDE68A",
+    "error_surface": "#FEE2E2",
+    "on_contrast": "#FFFFFF",
+    "shadow_soft": "#12000000",
+    "shadow_softer": "#08000000",
+    "shadow_lift": "#1A000000",
+    "scrim_light": "#B3FFFFFF",
+    "scrim_dark": "#99000000",
+    "square_radius": 8,
+    "status_badge_size": 72,
+}
 
 
 class ThemeBridge(QObject):
     changed = Signal()
 
-    def __init__(self, theme: ResolvedTheme, parent=None):
+    def __init__(self, theme: Optional[ResolvedTheme] = None, parent=None):
         super().__init__(parent)
-        self._theme = theme
+        self._theme = theme if theme is not None else default_resolved_theme()
 
     def apply(self, theme: ResolvedTheme) -> None:
-        self._theme = theme
+        self._theme = theme if theme is not None else default_resolved_theme()
         self.changed.emit()
 
     def _t(self) -> ResolvedTheme:
+        if self._theme is None:
+            self._theme = default_resolved_theme()
         return self._theme
 
     @Property(str, notify=changed)
@@ -92,6 +122,58 @@ class ThemeBridge(QObject):
     @Property(str, notify=changed)
     def price(self) -> str:
         return self._t().color("price")
+
+    # --- Shared chrome / component tokens ---
+
+    @Property(str, notify=changed)
+    def border(self) -> str:
+        return _CHROME["border"]
+
+    @Property(str, notify=changed)
+    def imageWell(self) -> str:  # noqa: N802
+        return _CHROME["image_well"]
+
+    @Property(str, notify=changed)
+    def warningSurface(self) -> str:  # noqa: N802
+        return _CHROME["warning_surface"]
+
+    @Property(str, notify=changed)
+    def warningBorder(self) -> str:  # noqa: N802
+        return _CHROME["warning_border"]
+
+    @Property(str, notify=changed)
+    def errorSurface(self) -> str:  # noqa: N802
+        return _CHROME["error_surface"]
+
+    @Property(str, notify=changed)
+    def onContrast(self) -> str:  # noqa: N802
+        return _CHROME["on_contrast"]
+
+    @Property(str, notify=changed)
+    def shadowSoft(self) -> str:  # noqa: N802
+        return _CHROME["shadow_soft"]
+
+    @Property(str, notify=changed)
+    def shadowSofter(self) -> str:  # noqa: N802
+        return _CHROME["shadow_softer"]
+
+    @Property(str, notify=changed)
+    def shadowLift(self) -> str:  # noqa: N802
+        return _CHROME["shadow_lift"]
+
+    @Property(str, notify=changed)
+    def scrim(self) -> str:
+        if self._t().mode == "light":
+            return _CHROME["scrim_light"]
+        return _CHROME["scrim_dark"]
+
+    @Property(int, notify=changed)
+    def squareRadius(self) -> int:  # noqa: N802
+        return int(_CHROME["square_radius"])
+
+    @Property(int, notify=changed)
+    def statusBadgeSize(self) -> int:  # noqa: N802
+        return int(_CHROME["status_badge_size"])
 
     @Property(int, notify=changed)
     def cornerRadius(self) -> int:  # noqa: N802

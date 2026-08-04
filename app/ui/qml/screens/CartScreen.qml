@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../components"
+import SellMate 1.0
 
 ColumnLayout {
     anchors.fill: parent

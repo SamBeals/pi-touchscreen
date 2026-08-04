@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../components"
+import SellMate 1.0
 
 ColumnLayout {
     spacing: Theme.sectionGap
@@ -25,8 +26,8 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: visible ? statusText.implicitHeight + 20 : 0
         radius: height / 2
-        color: "#FEF3C7"
-        border.color: "#FDE68A"
+        color: Theme.warningSurface
+        border.color: Theme.warningBorder
         border.width: 1
 
         Text {

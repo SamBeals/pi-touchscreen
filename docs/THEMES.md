@@ -41,17 +41,24 @@ sudo systemctl restart sellmate-touchscreen
 
 ## Validation and fallback
 
-On boot, `ThemeLoader`:
+On boot, the theme provider (`app/ui/theme_provider.py`):
 
-1. Resolves `/etc/sellmate/themes/<THEME_ID>/` then bundled `themes/<THEME_ID>/`
+1. Loads via `load_theme` — resolves `/etc/sellmate/themes/<THEME_ID>/` then
+   bundled `themes/<THEME_ID>/`
 2. Validates `schema_version` (currently `1`)
 3. Merges over SellMate defaults
 4. Enforces contrast (text/price), hex colors, safe asset paths, enum fields
 5. On hard failure (missing package, bad JSON, unsupported schema) → loads
    `sellmate-default` and logs `theme.load_failed` / `theme.loaded` with
    `used_fallback=true`
+6. Registers `Theme` as a **QML singleton** (`import SellMate 1.0`) *before*
+   the QML engine is created, so every screen/component receives a complete,
+   non-null theme object
 
 Soft failures (bad color, missing banner) strip that field and keep the rest.
+
+Components use `Theme.*` tokens for colors, type, spacing, radii, shadows, and
+chrome — not hardcoded palette values.
 
 ## Usability floors (not overridable)
 

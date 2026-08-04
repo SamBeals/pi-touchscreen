@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../components"
+import SellMate 1.0
 
 ColumnLayout {
     anchors.fill: parent
@@ -25,7 +26,7 @@ ColumnLayout {
             Rectangle {
                 anchors.fill: parent
                 radius: Theme.cornerRadius - 4
-                color: "#F9FAFB"
+                color: Theme.imageWell
                 clip: true
 
                 Image {

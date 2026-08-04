@@ -1,4 +1,5 @@
 import QtQuick
+import SellMate 1.0
 
 Text {
     id: root

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import SellMate 1.0
 
 Item {
     id: root
@@ -29,7 +30,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: Math.max(12, Theme.cornerRadius - 4)
-                    color: "#F9FAFB"
+                    color: Theme.imageWell
                     clip: true
 
                     Image {

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import SellMate 1.0
 
 Item {
     id: root
@@ -56,7 +57,7 @@ Item {
             Layout.preferredWidth: Math.max(cartLabel.implicitWidth + 40, 110)
             radius: height / 2
             color: Theme.secondary
-            border.color: "#E5E7EB"
+            border.color: Theme.border
             border.width: 1
 
             Text {

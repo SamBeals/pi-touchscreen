@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import SellMate 1.0
 
 RowLayout {
     id: root

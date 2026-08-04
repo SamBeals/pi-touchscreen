@@ -17,10 +17,10 @@ from app.models.product import Product
 from app.state.app_state import AppScreen, AppStateMachine, checkout_gate_reason
 from app.state.checkout_service import CheckoutService, PollResult
 from app.state.order_store import ActiveOrderStore
-from app.theme.loader import load_theme
 from app.ui.layout import browse_column_count, current_profile
 from app.ui.list_models import CartModel, CatalogModel
 from app.ui.theme_bridge import ThemeBridge
+from app.ui.theme_provider import create_theme_bridge
 from app.ui.workers import (
     CancelOrderWorker,
     CheckoutStartWorker,
@@ -52,11 +52,11 @@ class AppController(QObject):
         self.catalog: Dict[str, Product] = {}
         self.snapshot: Optional[InventorySnapshot] = None
 
-        theme_result = load_theme(
-            settings.theme_id,
+        self._theme_bridge = create_theme_bridge(
+            theme_id=settings.theme_id,
             packages_dir=settings.theme_packages_dir,
+            parent=self,
         )
-        self.theme = ThemeBridge(theme_result.theme, self)
 
         self.catalog_model = CatalogModel(self)
         self.cart_model = CartModel(self)
@@ -104,6 +104,10 @@ class AppController(QObject):
         QTimer.singleShot(0, self._bootstrap)
 
     # ----- Qt properties -----
+
+    @Property(QObject, constant=True)
+    def theme(self) -> ThemeBridge:
+        return self._theme_bridge
 
     @Property(str, notify=screenChanged)
     def screen(self) -> str:

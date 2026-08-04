@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../components"
+import SellMate 1.0
 
 ColumnLayout {
     anchors.fill: parent
@@ -10,16 +11,16 @@ ColumnLayout {
 
     Rectangle {
         Layout.alignment: Qt.AlignHCenter
-        width: 88
-        height: 88
-        radius: 44
+        width: Theme.statusBadgeSize + 16
+        height: Theme.statusBadgeSize + 16
+        radius: (Theme.statusBadgeSize + 16) / 2
         color: Theme.secondary
 
         Rectangle {
             anchors.centerIn: parent
-            width: 44
+            width: Theme.statusBadgeSize / 2 + 8
             height: 30
-            radius: 6
+            radius: Theme.squareRadius - 2
             color: Theme.primary
             border.color: Theme.text
             border.width: 0

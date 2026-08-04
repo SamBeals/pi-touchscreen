@@ -1,4 +1,5 @@
 import QtQuick
+import SellMate 1.0
 
 Item {
     id: root
@@ -37,7 +38,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         visible: Theme.backgroundType === "image"
-        color: Theme.mode === "light" ? "#B3FFFFFF" : "#99000000"
+        color: Theme.scrim
     }
 
     default property alias content: body.data

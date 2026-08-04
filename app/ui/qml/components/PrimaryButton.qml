@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import SellMate 1.0
 
 Button {
     id: root
@@ -24,15 +25,15 @@ Button {
             anchors.fill: parent
             anchors.topMargin: root.down ? 2 : 0
             radius: Theme.buttonShape === "pill" ? height / 2
-                  : Theme.buttonShape === "square" ? 8
+                  : Theme.buttonShape === "square" ? Theme.squareRadius
                   : Theme.cornerRadius
             color: {
-                if (!root.enabled) return "#E5E7EB"
+                if (!root.enabled) return Theme.border
                 if (root.down) return Qt.darker(_fill(), 1.08)
                 return _fill()
             }
             border.width: Theme.buttonStyle === "outline" || root.secondary ? 1 : 0
-            border.color: root.danger ? Theme.error : (root.secondary ? "#E5E7EB" : Theme.primary)
+            border.color: root.danger ? Theme.error : (root.secondary ? Theme.border : Theme.primary)
 
             // Soft lift for primary filled buttons
             Rectangle {
@@ -42,7 +43,7 @@ Button {
                 anchors.topMargin: 2
                 z: -1
                 radius: parent.radius
-                color: "#1A000000"
+                color: Theme.shadowLift
             }
         }
     }
@@ -70,10 +71,10 @@ Button {
         if (Theme.buttonStyle === "outline")
             return root.danger ? Theme.error : Theme.text
         if (root.secondary) return Theme.text
-        if (root.danger) return "#FFFFFF"
-        if (root.success) return "#FFFFFF"
+        if (root.danger) return Theme.onContrast
+        if (root.success) return Theme.onContrast
         // Lime primary reads best with charcoal labels
-        return Theme.mode === "light" ? Theme.text : "#FFFFFF"
+        return Theme.mode === "light" ? Theme.text : Theme.onContrast
     }
 
     onClicked: App.bumpIdle()

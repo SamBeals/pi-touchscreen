@@ -1,4 +1,5 @@
 import QtQuick
+import SellMate 1.0
 
 Item {
     id: root
@@ -22,7 +23,7 @@ Item {
         anchors.leftMargin: 2
         anchors.rightMargin: 2
         radius: face.radius + 2
-        color: "#12000000"
+        color: Theme.shadowSoft
         z: -2
     }
     Rectangle {
@@ -30,7 +31,7 @@ Item {
         anchors.fill: face
         anchors.topMargin: 1
         radius: face.radius
-        color: "#08000000"
+        color: Theme.shadowSofter
         z: -1
     }
 
@@ -40,7 +41,7 @@ Item {
         radius: Theme.cornerRadius
         color: Theme.surface
         border.width: root.outlined || Theme.productCardStyle === "flat" ? 1 : 0
-        border.color: "#E5E7EB"
+        border.color: Theme.border
         clip: true
     }
 }

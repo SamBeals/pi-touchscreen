@@ -49,6 +49,8 @@ Configuration-driven packages (`theme.json` + assets). See [docs/THEMES.md](./do
 - Selection: `THEME_ID` (default `sellmate-default`)
 - Bundled: `themes/sellmate-default`, `themes/sellmate-light`
 - Invalid packages fall back to SellMate default without bricking the kiosk
+- QML access: `import SellMate 1.0` → singleton `Theme` (registered before engine
+  create via `app/ui/theme_provider.py`); never a nullable context property
 
 ### `theme.json` (schema_version 1)
 

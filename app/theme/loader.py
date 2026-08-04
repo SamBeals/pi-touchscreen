@@ -305,6 +305,17 @@ def _resolve_from_dict(
     )
 
 
+def default_resolved_theme() -> ResolvedTheme:
+    """Complete SellMate default theme with no package dependency."""
+    return _resolve_from_dict(
+        default_theme_dict(),
+        package_dir=bundled_themes_dir() / DEFAULT_THEME_ID,
+        used_fallback=True,
+        errors=[],
+        warnings=[],
+    )
+
+
 def load_theme(
     theme_id: Optional[str] = None,
     *,
