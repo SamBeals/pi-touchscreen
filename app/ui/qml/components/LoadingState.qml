@@ -9,11 +9,20 @@ Column {
 
     Text {
         width: parent.width
-        text: root.message
-        color: Theme.text
+        text: Theme.businessName
+        color: Theme.primary
         font.family: Theme.fontFamily
         font.pixelSize: Theme.titleFontPx
         font.bold: true
+        horizontalAlignment: Text.AlignHCenter
+    }
+
+    Text {
+        width: parent.width
+        text: root.message
+        color: Theme.textMuted
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.subtitleFontPx
         wrapMode: Text.WordWrap
         horizontalAlignment: Text.AlignHCenter
     }

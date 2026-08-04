@@ -3,7 +3,7 @@ import QtQuick
 Column {
     property string message: "Nothing here yet"
     spacing: Theme.gap
-    width: parent ? parent.width : 400
+    width: parent ? Math.min(parent.width, 420) : 400
 
     Text {
         width: parent.width

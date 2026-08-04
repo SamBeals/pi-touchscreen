@@ -1,13 +1,14 @@
 import QtQuick
-import QtQuick.Controls
 
 GridView {
     id: root
     clip: true
     cellWidth: width / Math.max(1, App.browseColumns)
-    cellHeight: Math.max(Theme.cardMinHeight + 24, 280)
+    // Nearly square retail tiles
+    cellHeight: Math.max(Theme.cardMinHeight, cellWidth * 1.15)
     model: CatalogModel
     boundsBehavior: Flickable.StopAtBounds
+    cacheBuffer: cellHeight * 4
 
     delegate: Item {
         width: root.cellWidth
@@ -15,21 +16,22 @@ GridView {
 
         ProductCard {
             anchors.fill: parent
-            anchors.margins: Theme.gap / 2
+            anchors.margins: Math.max(8, Theme.gap / 2)
             slotId: model.slotId
             name: model.name
             priceText: model.priceText
             stockText: model.stockText
             imageUrl: model.imageUrl
+            qty: model.qty
         }
     }
 
     EmptyState {
         anchors.centerIn: parent
         visible: root.count === 0
-        message: "No products available"
+        message: "No products available right now"
     }
 
-    onWidthChanged: App.setBrowseViewportWidth(width)
-    Component.onCompleted: App.setBrowseViewportWidth(width)
+    onWidthChanged: App.setBrowseViewportWidth(Math.round(width))
+    Component.onCompleted: App.setBrowseViewportWidth(Math.round(width))
 }

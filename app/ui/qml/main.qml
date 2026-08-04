@@ -53,8 +53,7 @@ ApplicationWindow {
         }
     }
 
-    // Lightweight notice overlay (replaces QMessageBox for QML)
-    Rectangle {
+    ElevatedCard {
         id: toast
         visible: false
         anchors.left: parent.left
@@ -62,9 +61,6 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.margins: Theme.pageMargin
         height: toastCol.implicitHeight + 32
-        radius: Theme.cornerRadius
-        color: Theme.surface
-        border.color: Theme.secondary
         z: 100
 
         Column {
@@ -72,14 +68,14 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.margins: 16
+            anchors.margins: 18
             spacing: 6
             Text {
                 id: toastTitle
                 width: parent.width
                 color: Theme.text
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.subtitleFontPx
+                font.pixelSize: Theme.subtitleFontPx - 2
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -118,9 +114,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Esc"
-        enabled: !window.visibility || true
         onActivated: {
-            // Escape closes only in windowed/dev; fullscreen kiosk ignores via Python host if needed
             if (window.visibility !== Window.FullScreen)
                 Qt.quit()
         }

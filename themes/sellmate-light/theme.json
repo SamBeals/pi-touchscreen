@@ -8,40 +8,40 @@
     "logo": ""
   },
   "colors": {
-    "primary": "#1D4ED8",
-    "secondary": "#4B5563",
-    "accent": "#B45309",
-    "background": "#F9FAFB",
+    "primary": "#A3E635",
+    "secondary": "#F3F4F6",
+    "accent": "#84CC16",
+    "background": "#FAFAFA",
     "surface": "#FFFFFF",
-    "text": "#111827",
-    "text_muted": "#4B5563",
-    "success": "#047857",
-    "warning": "#B45309",
-    "error": "#B91C1C",
-    "price": "#047857"
+    "text": "#1F2937",
+    "text_muted": "#6B7280",
+    "success": "#16A34A",
+    "warning": "#D97706",
+    "error": "#DC2626",
+    "price": "#1F2937"
   },
   "typography": {
     "family": "DejaVu Sans",
     "scale": "comfortable"
   },
   "shape": {
-    "corner_radius": 16,
+    "corner_radius": 20,
     "button_style": "filled",
-    "button_shape": "rounded",
-    "product_card_style": "outlined"
+    "button_shape": "pill",
+    "product_card_style": "elevated"
   },
   "layout": {
-    "spacing_density": "comfortable",
+    "spacing_density": "spacious",
     "animation_intensity": "subtle"
   },
   "chrome": {
     "background": {
       "type": "solid",
-      "color": "#F9FAFB"
+      "color": "#FAFAFA"
     },
-    "attract_headline": "Touch to shop",
+    "attract_headline": "Tap to start shopping",
     "attract_promo": "",
     "banner": "",
-    "product_image_treatment": "cover_rounded"
+    "product_image_treatment": "contain"
   }
 }

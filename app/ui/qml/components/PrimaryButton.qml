@@ -8,32 +8,49 @@ Button {
     property bool secondary: false
 
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.bodyFontPx
+    font.pixelSize: Theme.bodyFontPx + 2
     font.bold: true
-    implicitHeight: Math.max(Theme.primaryButtonMinHeight, implicitContentHeight + 24)
-    leftPadding: 28
-    rightPadding: 28
-    topPadding: 16
-    bottomPadding: 16
+    implicitHeight: Math.max(
+        root.secondary ? Theme.secondaryButtonMinHeight : Theme.primaryButtonMinHeight,
+        implicitContentHeight + 28
+    )
+    leftPadding: 32
+    rightPadding: 32
+    topPadding: 18
+    bottomPadding: 18
 
-    background: Rectangle {
-        radius: Theme.buttonShape === "pill" ? height / 2
-              : Theme.buttonShape === "square" ? 4
-              : Theme.cornerRadius
-        color: {
-            if (!root.enabled) return Theme.secondary
-            if (root.down) return Qt.darker(_fill(), 1.15)
-            return _fill()
+    background: Item {
+        Rectangle {
+            anchors.fill: parent
+            anchors.topMargin: root.down ? 2 : 0
+            radius: Theme.buttonShape === "pill" ? height / 2
+                  : Theme.buttonShape === "square" ? 8
+                  : Theme.cornerRadius
+            color: {
+                if (!root.enabled) return "#E5E7EB"
+                if (root.down) return Qt.darker(_fill(), 1.08)
+                return _fill()
+            }
+            border.width: Theme.buttonStyle === "outline" || root.secondary ? 1 : 0
+            border.color: root.danger ? Theme.error : (root.secondary ? "#E5E7EB" : Theme.primary)
+
+            // Soft lift for primary filled buttons
+            Rectangle {
+                visible: !root.secondary && Theme.buttonStyle === "filled" && root.enabled && !root.danger
+                anchors.fill: parent
+                anchors.margins: -1
+                anchors.topMargin: 2
+                z: -1
+                radius: parent.radius
+                color: "#1A000000"
+            }
         }
-        border.width: Theme.buttonStyle === "outline" ? 2 : 0
-        border.color: root.danger ? Theme.error : Theme.primary
-        opacity: Theme.buttonStyle === "soft" ? 0.9 : 1
     }
 
     contentItem: Text {
         text: root.text
         font: root.font
-        color: Theme.buttonStyle === "outline" ? (root.danger ? Theme.error : Theme.primary) : "#FFFFFF"
+        color: _labelColor()
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         wrapMode: Text.WordWrap
@@ -44,9 +61,25 @@ Button {
         if (root.success) return Theme.success
         if (root.secondary) return Theme.secondary
         if (Theme.buttonStyle === "outline") return "transparent"
-        if (Theme.buttonStyle === "soft") return Theme.accent
+        if (Theme.buttonStyle === "soft") return Theme.secondary
         return Theme.primary
     }
 
+    function _labelColor() {
+        if (!root.enabled) return Theme.textMuted
+        if (Theme.buttonStyle === "outline")
+            return root.danger ? Theme.error : Theme.text
+        if (root.secondary) return Theme.text
+        if (root.danger) return "#FFFFFF"
+        if (root.success) return "#FFFFFF"
+        // Lime primary reads best with charcoal labels
+        return Theme.mode === "light" ? Theme.text : "#FFFFFF"
+    }
+
     onClicked: App.bumpIdle()
+
+    Behavior on scale {
+        NumberAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic }
+    }
+    scale: down ? 0.98 : 1.0
 }

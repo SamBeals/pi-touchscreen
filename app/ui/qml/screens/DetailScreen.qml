@@ -6,23 +6,48 @@ ColumnLayout {
     anchors.fill: parent
     spacing: Theme.sectionGap
 
-    Item {
+    AppHeader {
+        showBrand: false
+        title: "Product"
+        showCart: false
         Layout.fillWidth: true
-        Layout.preferredHeight: Theme.productImageTreatment === "none" ? 0 : 240
+    }
+
+    ElevatedCard {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 280
         visible: Theme.productImageTreatment !== "none"
 
-        Rectangle {
+        Item {
             anchors.fill: parent
-            radius: Theme.productImageTreatment === "circle" ? width / 2 : Theme.cornerRadius
-            color: Theme.surface
-            clip: true
+            anchors.margins: 12
 
-            Image {
+            Rectangle {
                 anchors.fill: parent
-                source: App.detailImageUrl
-                fillMode: Theme.productImageTreatment === "contain" ? Image.PreserveAspectFit : Image.PreserveAspectCrop
-                asynchronous: true
-                visible: App.detailImageUrl.length > 0
+                radius: Theme.cornerRadius - 4
+                color: "#F9FAFB"
+                clip: true
+
+                Image {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    source: App.detailImageUrl
+                    fillMode: Theme.productImageTreatment === "cover_rounded"
+                               ? Image.PreserveAspectCrop
+                               : Image.PreserveAspectFit
+                    asynchronous: true
+                    visible: App.detailImageUrl.length > 0
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: App.detailImageUrl.length === 0
+                    text: App.detailSlotId
+                    color: Theme.primary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 56
+                    font.bold: true
+                }
             }
         }
     }
@@ -31,7 +56,7 @@ ColumnLayout {
         text: App.detailName
         color: Theme.text
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.titleFontPx
+        font.pixelSize: Theme.titleFontPx - 4
         font.bold: true
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
@@ -46,7 +71,7 @@ ColumnLayout {
         text: App.detailMeta
         color: Theme.textMuted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.subtitleFontPx
+        font.pixelSize: Theme.bodyFontPx + 1
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
@@ -69,7 +94,6 @@ ColumnLayout {
         }
         PrimaryButton {
             text: "Add to cart"
-            success: true
             Layout.fillWidth: true
             onClicked: App.detailAdd()
         }

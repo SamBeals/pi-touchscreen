@@ -183,6 +183,10 @@ class AppController(QObject):
         product = self.catalog.get(self.fsm.selected_slot_id or "")
         return (product.image_url or "") if product else ""
 
+    @Property(str, notify=detailChanged)
+    def detailSlotId(self) -> str:  # noqa: N802
+        return self.fsm.selected_slot_id or ""
+
     @Property(int, notify=detailChanged)
     def detailQty(self) -> int:  # noqa: N802
         return self._detail_qty

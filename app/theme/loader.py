@@ -172,7 +172,7 @@ def _resolve_from_dict(
         warnings.append("colors.text fails WCAG AA on surface; adjusting surface to default")
         colors["surface"] = defaults["colors"]["surface"]
 
-    mode = _enum(merged.get("mode"), MODES, "dark", warnings, "mode")
+    mode = _enum(merged.get("mode"), MODES, "light", warnings, "mode")
     type_scale = _enum(
         typography.get("scale"), TYPE_SCALES, "comfortable", warnings, "typography.scale"
     )

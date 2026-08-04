@@ -22,16 +22,16 @@ class TestLayout(unittest.TestCase):
         self.assertEqual(width, 800)
         self.assertEqual(height, 1280)
 
-    def test_portrait_browse_one_column_at_target_width(self):
+    def test_portrait_browse_two_columns_at_target_width(self):
         profile = current_profile()
-        self.assertEqual(profile.browse_columns_at_target, 1)
-        self.assertEqual(browse_column_count(800, profile), 1)
-        self.assertEqual(browse_column_count(profile.window_width), 1)
+        self.assertEqual(profile.browse_columns_at_target, 2)
+        self.assertEqual(browse_column_count(800, profile), 2)
+        self.assertEqual(browse_column_count(profile.window_width), 2)
 
-    def test_wider_portrait_may_use_two_columns(self):
-        # Usable width must fit two min columns after margins.
-        self.assertEqual(browse_column_count(1200, PORTRAIT), 2)
-        # Portrait never opens a third column.
+    def test_narrow_portrait_falls_back_to_one_column(self):
+        self.assertEqual(browse_column_count(480, PORTRAIT), 1)
+
+    def test_portrait_never_opens_three_columns(self):
         self.assertEqual(browse_column_count(2400, PORTRAIT), 2)
 
     def test_touch_minimum_dimensions(self):

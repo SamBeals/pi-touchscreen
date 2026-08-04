@@ -11,7 +11,7 @@ Column {
         text: message
         color: Theme.error
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.titleFontPx
+        font.pixelSize: Theme.titleFontPx - 4
         font.bold: true
         wrapMode: Text.WordWrap
         horizontalAlignment: Text.AlignHCenter

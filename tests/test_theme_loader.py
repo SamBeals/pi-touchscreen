@@ -40,12 +40,12 @@ class TestThemeLoader(unittest.TestCase):
             data = json.loads((bundled_themes_dir() / DEFAULT_THEME_ID / "theme.json").read_text())
             data["id"] = "bad-colors"
             data["colors"]["primary"] = "not-a-color"
-            data["colors"]["text"] = "#111827"  # same as background → contrast fail
+            data["colors"]["text"] = "#F9FAFB"  # near-white on white → contrast fail
             (pkg / "theme.json").write_text(json.dumps(data), encoding="utf-8")
             result = load_theme("bad-colors", packages_dir=root)
             self.assertEqual(result.theme.id, "bad-colors")
-            self.assertEqual(result.theme.colors["primary"], "#2563EB")
-            self.assertNotEqual(result.theme.colors["text"], "#111827")
+            self.assertEqual(result.theme.colors["primary"], "#A3E635")
+            self.assertNotEqual(result.theme.colors["text"], "#F9FAFB")
             self.assertTrue(result.warnings)
 
     def test_unsupported_schema_falls_back(self):

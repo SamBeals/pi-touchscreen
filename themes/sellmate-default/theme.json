@@ -2,46 +2,46 @@
   "schema_version": 1,
   "id": "sellmate-default",
   "display_name": "SellMate",
-  "mode": "dark",
+  "mode": "light",
   "brand": {
     "business_name": "SellMate",
     "logo": ""
   },
   "colors": {
-    "primary": "#2563EB",
-    "secondary": "#374151",
-    "accent": "#F59E0B",
-    "background": "#111827",
-    "surface": "#1F2937",
-    "text": "#F9FAFB",
-    "text_muted": "#D1D5DB",
-    "success": "#059669",
+    "primary": "#A3E635",
+    "secondary": "#F3F4F6",
+    "accent": "#84CC16",
+    "background": "#FFFFFF",
+    "surface": "#FFFFFF",
+    "text": "#1F2937",
+    "text_muted": "#6B7280",
+    "success": "#16A34A",
     "warning": "#D97706",
     "error": "#DC2626",
-    "price": "#34D399"
+    "price": "#1F2937"
   },
   "typography": {
     "family": "DejaVu Sans",
     "scale": "comfortable"
   },
   "shape": {
-    "corner_radius": 16,
+    "corner_radius": 20,
     "button_style": "filled",
-    "button_shape": "rounded",
+    "button_shape": "pill",
     "product_card_style": "elevated"
   },
   "layout": {
     "spacing_density": "comfortable",
-    "animation_intensity": "moderate"
+    "animation_intensity": "subtle"
   },
   "chrome": {
     "background": {
-      "type": "gradient",
-      "stops": ["#111827", "#0F172A"]
+      "type": "solid",
+      "color": "#FFFFFF"
     },
-    "attract_headline": "Touch to shop",
+    "attract_headline": "Tap to start shopping",
     "attract_promo": "",
     "banner": "",
-    "product_image_treatment": "cover_rounded"
+    "product_image_treatment": "contain"
   }
 }

@@ -9,23 +9,23 @@ Item {
         anchors.fill: parent
         spacing: Theme.sectionGap
 
-        Item { Layout.fillHeight: true; Layout.preferredHeight: 2 }
+        Item { Layout.fillHeight: true; Layout.preferredHeight: 3 }
 
         Image {
             visible: Theme.logoUrl.length > 0
             source: Theme.logoUrl
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredHeight: 96
-            Layout.preferredWidth: parent.width * 0.5
+            Layout.preferredHeight: 88
+            Layout.preferredWidth: parent.width * 0.55
             fillMode: Image.PreserveAspectFit
             asynchronous: true
         }
 
         Text {
             text: Theme.businessName
-            color: Theme.text
+            color: Theme.primary
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.titleFontPx
+            font.pixelSize: Theme.titleFontPx + 8
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
             Layout.fillWidth: true
@@ -45,9 +45,9 @@ Item {
         Text {
             visible: Theme.attractPromo.length > 0
             text: Theme.attractPromo
-            color: Theme.accent
+            color: Theme.text
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.bodyFontPx
+            font.pixelSize: Theme.bodyFontPx + 2
             horizontalAlignment: Text.AlignHCenter
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
@@ -57,7 +57,7 @@ Item {
             Layout.fillWidth: true
         }
 
-        Item { Layout.fillHeight: true; Layout.preferredHeight: 1 }
+        Item { Layout.fillHeight: true; Layout.preferredHeight: 2 }
 
         PrimaryButton {
             text: "Start shopping"
@@ -72,9 +72,5 @@ Item {
         anchors.fill: parent
         z: -1
         onClicked: App.enterBrowse()
-    }
-
-    Behavior on opacity {
-        NumberAnimation { duration: Theme.animationMs }
     }
 }

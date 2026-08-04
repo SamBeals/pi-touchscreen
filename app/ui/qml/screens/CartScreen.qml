@@ -6,12 +6,10 @@ ColumnLayout {
     anchors.fill: parent
     spacing: Theme.gap
 
-    Text {
-        text: "Your cart"
-        color: Theme.text
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.titleFontPx
-        font.bold: true
+    AppHeader {
+        showBrand: false
+        title: "Your cart"
+        showCart: false
         Layout.fillWidth: true
     }
 
@@ -38,9 +36,30 @@ ColumnLayout {
         }
     }
 
-    PriceDisplay {
-        amount: App.cartTotalText
+    ElevatedCard {
         Layout.fillWidth: true
+        implicitHeight: totalCol.implicitHeight + 28
+
+        ColumnLayout {
+            id: totalCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: 18
+            spacing: 4
+
+            Text {
+                text: "Total"
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodyFontPx
+            }
+
+            PriceDisplay {
+                amount: App.cartTotalText.replace(/^Total:\s*/, "")
+                Layout.fillWidth: true
+            }
+        }
     }
 
     BottomActionBar {
@@ -52,7 +71,6 @@ ColumnLayout {
         }
         PrimaryButton {
             text: "Checkout"
-            success: true
             enabled: App.checkoutEnabled
             Layout.fillWidth: true
             onClicked: App.startCheckout()

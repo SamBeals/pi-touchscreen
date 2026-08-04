@@ -1,24 +1,29 @@
 import QtQuick
-import QtQuick.Layouts
 
 Item {
     id: root
     anchors.fill: parent
 
-    // Background layers
     Rectangle {
         anchors.fill: parent
         color: Theme.background
-        visible: Theme.backgroundType === "solid"
+        visible: Theme.backgroundType === "solid" || Theme.backgroundType === "gradient"
     }
 
     Rectangle {
         anchors.fill: parent
         visible: Theme.backgroundType === "gradient"
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Theme.backgroundStops.length > 0 ? Theme.backgroundStops[0] : Theme.background }
-            GradientStop { position: 1.0; color: Theme.backgroundStops.length > 1 ? Theme.backgroundStops[1] : Theme.background }
+            GradientStop {
+                position: 0.0
+                color: Theme.backgroundStops.length > 0 ? Theme.backgroundStops[0] : Theme.background
+            }
+            GradientStop {
+                position: 1.0
+                color: Theme.backgroundStops.length > 1 ? Theme.backgroundStops[1] : Theme.background
+            }
         }
+        opacity: 0.35
     }
 
     Image {
@@ -29,11 +34,10 @@ Item {
         asynchronous: true
     }
 
-    // Dim overlay for readability over photo backgrounds
     Rectangle {
         anchors.fill: parent
         visible: Theme.backgroundType === "image"
-        color: Theme.mode === "light" ? "#80FFFFFF" : "#99000000"
+        color: Theme.mode === "light" ? "#B3FFFFFF" : "#99000000"
     }
 
     default property alias content: body.data
@@ -41,6 +45,9 @@ Item {
     Item {
         id: body
         anchors.fill: parent
-        anchors.margins: Theme.pageMargin
+        anchors.leftMargin: Theme.pageMargin
+        anchors.rightMargin: Theme.pageMargin
+        anchors.topMargin: Theme.pageMargin + 4
+        anchors.bottomMargin: Theme.pageMargin
     }
 }

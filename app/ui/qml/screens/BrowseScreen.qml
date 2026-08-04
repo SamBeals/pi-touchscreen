@@ -3,22 +3,45 @@ import QtQuick.Layouts
 import "../components"
 
 ColumnLayout {
-    spacing: Theme.gap
+    spacing: Theme.sectionGap
     anchors.fill: parent
 
     AppHeader {
-        title: "Choose a product"
+        showBrand: true
         showCart: true
+        title: ""
         Layout.fillWidth: true
     }
 
-    Text {
-        text: App.browseStatus
-        color: Theme.textMuted
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.subtitleFontPx
-        wrapMode: Text.WordWrap
+    // Only surface operational gates — not inventory counts
+    Rectangle {
+        id: statusChip
+        visible: {
+            var s = App.browseStatus
+            return s.indexOf("unavailable") >= 0
+                || s.indexOf("stale") >= 0
+                || s.indexOf("unreachable") >= 0
+        }
         Layout.fillWidth: true
+        Layout.preferredHeight: visible ? statusText.implicitHeight + 20 : 0
+        radius: height / 2
+        color: "#FEF3C7"
+        border.color: "#FDE68A"
+        border.width: 1
+
+        Text {
+            id: statusText
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: 14
+            text: App.browseStatus
+            color: Theme.warning
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.bodyFontPx
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+        }
     }
 
     PromoBanner {

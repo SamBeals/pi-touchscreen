@@ -21,8 +21,8 @@ Bundled themes ship in the repo under `themes/`:
 
 | ID | Purpose |
 |---|---|
-| `sellmate-default` | Dark SellMate brand (default) |
-| `sellmate-light` | Light-mode reference theme |
+| `sellmate-default` | Premium white / lime retail brand (default) |
+| `sellmate-light` | Alternate light theme (spacious density) |
 
 ## Selection
 

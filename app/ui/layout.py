@@ -13,9 +13,9 @@ from typing import Literal
 
 Orientation = Literal["portrait", "landscape"]
 
-# Minimum card width before a second browse column is introduced.
-# Chosen so target portrait (800px minus margins) stays one column.
-BROWSE_MIN_COLUMN_WIDTH = 400
+# Minimum card width before another browse column is introduced.
+# At 800px portrait (minus margins), two square retail cards fit cleanly.
+BROWSE_MIN_COLUMN_WIDTH = 320
 
 
 @dataclass(frozen=True)
@@ -41,14 +41,14 @@ PORTRAIT = LayoutProfile(
     orientation="portrait",
     window_width=800,
     window_height=1280,
-    browse_columns_at_target=1,
+    browse_columns_at_target=2,
     button_min_height=72,
-    card_min_height=200,
-    page_margin=24,
-    title_font_px=42,
-    subtitle_font_px=24,
-    body_font_px=20,
-    price_font_px=28,
+    card_min_height=280,
+    page_margin=28,
+    title_font_px=40,
+    subtitle_font_px=22,
+    body_font_px=18,
+    price_font_px=26,
 )
 
 # Unused for this hardware revision — kept for future landscape mounts.

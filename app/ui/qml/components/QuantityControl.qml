@@ -11,20 +11,29 @@ RowLayout {
 
     SecondaryButton {
         text: "−"
-        Layout.fillWidth: true
+        Layout.preferredWidth: 88
+        Layout.fillWidth: false
         onClicked: root.decrement()
     }
-    Text {
-        text: "Qty: " + root.quantity
-        color: Theme.textMuted
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.subtitleFontPx
-        horizontalAlignment: Text.AlignHCenter
+    Rectangle {
         Layout.fillWidth: true
+        Layout.preferredHeight: Theme.secondaryButtonMinHeight
+        radius: Theme.cornerRadius
+        color: Theme.secondary
+
+        Text {
+            anchors.centerIn: parent
+            text: root.quantity
+            color: Theme.text
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.subtitleFontPx
+            font.bold: true
+        }
     }
     SecondaryButton {
         text: "+"
-        Layout.fillWidth: true
+        Layout.preferredWidth: 88
+        Layout.fillWidth: false
         onClicked: root.increment()
     }
 }

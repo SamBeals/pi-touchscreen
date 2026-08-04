@@ -1,85 +1,119 @@
 import QtQuick
 import QtQuick.Layouts
 
-Rectangle {
+Item {
     id: root
     property string slotId: ""
     property string name: ""
     property string priceText: ""
     property string stockText: ""
     property string imageUrl: ""
+    property int qty: 0
 
-    radius: Theme.cornerRadius
-    color: Theme.surface
-    border.width: Theme.productCardStyle === "outlined" ? 1 : 0
-    border.color: Theme.secondary
-    implicitHeight: Math.max(Theme.cardMinHeight, content.implicitHeight + 32)
-
-    ColumnLayout {
-        id: content
+    ElevatedCard {
+        id: card
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 10
 
-        Item {
-            visible: Theme.productImageTreatment !== "none"
-            Layout.fillWidth: true
-            Layout.preferredHeight: imageUrl.length > 0 || Theme.productImageTreatment !== "none" ? 140 : 0
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
 
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.productImageTreatment === "circle" ? width / 2 : Theme.cornerRadius
-                color: Theme.background
-                clip: true
+            // Image / slot placeholder — square-ish media area
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredHeight: 140
+                Layout.minimumHeight: 120
 
-                Image {
+                Rectangle {
                     anchors.fill: parent
-                    source: root.imageUrl
-                    fillMode: Theme.productImageTreatment === "contain" ? Image.PreserveAspectFit : Image.PreserveAspectCrop
-                    asynchronous: true
-                    visible: root.imageUrl.length > 0
-                }
+                    radius: Math.max(12, Theme.cornerRadius - 4)
+                    color: "#F9FAFB"
+                    clip: true
 
-                Text {
-                    anchors.centerIn: parent
-                    visible: root.imageUrl.length === 0
-                    text: "No image"
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.bodyFontPx
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        source: root.imageUrl
+                        fillMode: Theme.productImageTreatment === "cover_rounded"
+                                   ? Image.PreserveAspectCrop
+                                   : Image.PreserveAspectFit
+                        asynchronous: true
+                        visible: root.imageUrl.length > 0
+                    }
+
+                    // Slot-ID placeholder when no image
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 4
+                        visible: root.imageUrl.length === 0
+                        width: parent.width - 16
+
+                        Text {
+                            width: parent.width
+                            text: root.slotId
+                            color: Theme.primary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Math.min(48, parent.width * 0.28)
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
                 }
             }
-        }
 
-        Text {
-            text: root.name
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.subtitleFontPx
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-        }
+            Text {
+                text: root.slotId
+                color: Theme.primary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodyFontPx
+                font.bold: true
+                visible: root.imageUrl.length > 0
+                Layout.fillWidth: true
+            }
 
-        PriceDisplay {
-            amount: root.priceText
-            Layout.fillWidth: true
-        }
+            Text {
+                text: root.name
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodyFontPx + 1
+                font.bold: true
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
 
-        Text {
-            text: root.stockText
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.bodyFontPx
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-        }
+            PriceDisplay {
+                amount: root.priceText
+                Layout.fillWidth: true
+            }
 
-        Item { Layout.fillHeight: true }
-
-        PrimaryButton {
-            text: "View"
-            Layout.fillWidth: true
-            onClicked: App.openDetail(root.slotId)
+            Text {
+                visible: root.qty > 0 && root.qty <= 3
+                text: root.qty === 1 ? "Only 1 left" : "Only " + root.qty + " left"
+                color: Theme.warning
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodyFontPx - 2
+                Layout.fillWidth: true
+            }
         }
+    }
+
+    // Entire card is the hit target
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            App.bumpIdle()
+            App.openDetail(root.slotId)
+        }
+        onPressed: card.scale = 0.98
+        onReleased: card.scale = 1.0
+        onCanceled: card.scale = 1.0
+    }
+
+    Behavior on opacity {
+        NumberAnimation { duration: Theme.animationMs }
     }
 }
