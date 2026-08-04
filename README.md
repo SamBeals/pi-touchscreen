@@ -1,14 +1,17 @@
 # SellMate Pi Touchscreen
 
-Fullscreen PySide6 customer kiosk for a Raspberry Pi 10.1" touchscreen.
+Fullscreen PySide6 **Qt Quick / QML** customer kiosk for a Raspberry Pi 10.1"
+touchscreen mounted in **portrait** (windowed/dev size **800×1280**). Assume
+the OS already rotates the framebuffer and touch; the app is portrait-first only.
 
-Milestone 1: browse inventory, cart, Cloud checkout + payment status polling, idle timeout, active-order recovery.
+Browse inventory, cart, Cloud checkout + payment status polling, idle timeout,
+active-order recovery, and **configuration-driven renter themes**.
 
 **Does not** control motors, ToF, or local vend-api. Vending stays on `sellmate-pi` background services.
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md).
+See [ARCHITECTURE.md](./ARCHITECTURE.md). Theme authoring: [docs/THEMES.md](./docs/THEMES.md).
 
 ## Configuration
 
@@ -37,6 +40,8 @@ Touchscreen-specific env (unit file or shell):
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Firestore reader JSON |
 | `FIRESTORE_PROJECT_ID` | — | e.g. `sellmate-bdd22` |
 | `INVENTORY_FIXTURE_PATH` | — | Lab JSON instead of Firestore |
+| `THEME_ID` | `sellmate-default` | Theme package folder name |
+| `THEME_PACKAGES_DIR` | `/etc/sellmate/themes` | Installed renter themes |
 | `LOG_LEVEL` | `INFO` | Logging |
 
 ## Local development
@@ -51,8 +56,10 @@ export MACHINE_ID=machine_001
 export CLOUD_BASE=https://sellmatecloud-1002770348452.us-west4.run.app
 export FULLSCREEN=false
 export INVENTORY_FIXTURE_PATH=$PWD/fixtures/inventory.json
+export THEME_ID=sellmate-default
+# export THEME_ID=sellmate-light   # light-mode reference
 
-python -m app
+python -m app   # windowed portrait 800×1280 when FULLSCREEN=false
 ```
 
 ## Tests

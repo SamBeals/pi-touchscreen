@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Headless UI smoke test for Milestone 1 screens.
+Headless UI smoke test for QML kiosk screens.
 
 Usage (from repo root, with deps installed):
   FULLSCREEN=false \\
   INVENTORY_FIXTURE_PATH=$PWD/fixtures/inventory.json \\
   MACHINE_ID=machine_001 \\
   CLOUD_BASE=https://example.test \\
+  THEME_ID=sellmate-default \\
   QT_QPA_PLATFORM=offscreen \\
   python scripts/smoke_ui.py
 """
@@ -24,6 +25,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("FULLSCREEN", "false")
 os.environ.setdefault("MACHINE_ID", "machine_001")
 os.environ.setdefault("CLOUD_BASE", "https://example.test")
+os.environ.setdefault("THEME_ID", "sellmate-default")
 os.environ.setdefault(
     "INVENTORY_FIXTURE_PATH", str(ROOT / "fixtures" / "inventory.json")
 )
@@ -31,20 +33,20 @@ os.environ.setdefault(
 
 def main() -> int:
     try:
-        from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import QTimer
+        from PySide6.QtGui import QGuiApplication
     except ImportError as exc:
         print(f"SKIP: PySide6 not installed ({exc})", file=sys.stderr)
         return 2
 
     from app.config import load_settings
     from app.state.app_state import AppScreen
-    from app.ui.main_window import MainWindow
+    from app.ui.qml_host import QmlHost
 
-    app = QApplication(sys.argv)
+    app = QGuiApplication(sys.argv)
     settings = load_settings(load_machine_env_file=False)
-    window = MainWindow(settings)
-    window.show()
+    host = QmlHost(settings)
+    ctrl = host.controller
 
     errors: list[str] = []
     step = {"n": 0}
@@ -58,55 +60,51 @@ def main() -> int:
         n = step["n"]
         try:
             if n == 1:
-                # Allow bootstrap workers to finish
-                if window.fsm.screen == AppScreen.BOOT:
+                if ctrl.fsm.screen == AppScreen.BOOT:
                     QTimer.singleShot(200, advance)
                     return
-                if window.fsm.screen == AppScreen.FATAL:
-                    fail(f"Boot fatal: {window.fsm.fatal_reason}")
+                if ctrl.fsm.screen == AppScreen.FATAL:
+                    fail(f"Boot fatal: {ctrl.fsm.fatal_reason}")
                     return
-                if window.fsm.screen not in {AppScreen.ATTRACT, AppScreen.PAYMENT}:
-                    fail(f"Expected Attract after boot, got {window.fsm.screen}")
+                if ctrl.fsm.screen not in {AppScreen.ATTRACT, AppScreen.PAYMENT}:
+                    fail(f"Expected Attract after boot, got {ctrl.fsm.screen}")
                     return
-                print("OK boot ->", window.fsm.screen.value)
-                if window.fsm.screen == AppScreen.ATTRACT:
-                    window._enter_browse()
+                print("OK boot ->", ctrl.fsm.screen.value)
+                print("OK theme ->", ctrl.theme.id)
+                if ctrl.fsm.screen == AppScreen.ATTRACT:
+                    ctrl.enterBrowse()
                 QTimer.singleShot(50, advance)
             elif n == 2:
-                if window.fsm.screen != AppScreen.BROWSE:
-                    fail(f"Expected Browse, got {window.fsm.screen}")
+                if ctrl.fsm.screen != AppScreen.BROWSE:
+                    fail(f"Expected Browse, got {ctrl.fsm.screen}")
                     return
-                print("OK browse products=", len(window.snapshot.sellable() if window.snapshot else []))
-                sellable = window.snapshot.sellable() if window.snapshot else []
+                sellable = ctrl.snapshot.sellable() if ctrl.snapshot else []
+                print("OK browse products=", len(sellable))
                 if not sellable:
                     fail("No sellable products from fixture")
                     return
-                window._open_detail(sellable[0].slot_id)
+                ctrl.openDetail(sellable[0].slot_id)
                 QTimer.singleShot(50, advance)
             elif n == 3:
-                if window.fsm.screen != AppScreen.PRODUCT_DETAIL:
-                    fail(f"Expected Detail, got {window.fsm.screen}")
+                if ctrl.fsm.screen != AppScreen.PRODUCT_DETAIL:
+                    fail(f"Expected Detail, got {ctrl.fsm.screen}")
                     return
                 print("OK detail")
-                window._detail_add()
+                ctrl.detailAdd()
                 QTimer.singleShot(50, advance)
             elif n == 4:
-                if window.fsm.screen != AppScreen.BROWSE:
-                    fail(f"Expected Browse after add, got {window.fsm.screen}")
+                if ctrl.fsm.screen != AppScreen.BROWSE:
+                    fail(f"Expected Browse after add, got {ctrl.fsm.screen}")
                     return
-                window._open_cart()
+                ctrl.openCart()
                 QTimer.singleShot(50, advance)
             elif n == 5:
-                if window.fsm.screen != AppScreen.CART:
-                    fail(f"Expected Cart, got {window.fsm.screen}")
+                if ctrl.fsm.screen != AppScreen.CART:
+                    fail(f"Expected Cart, got {ctrl.fsm.screen}")
                     return
-                print("OK cart total_cents=", window.cart.total_cents())
-                # Checkout entry path: gate may block without cloud; ensure button path exists
-                if not hasattr(window, "cart_checkout_btn"):
-                    fail("Missing checkout button")
-                    return
-                print("OK checkout entry control present enabled=", window.cart_checkout_btn.isEnabled())
-                window.close()
+                print("OK cart total_cents=", ctrl.cart.total_cents())
+                print("OK checkoutEnabled=", ctrl.checkoutEnabled)
+                host.shutdown()
                 app.quit()
         except Exception as exc:  # noqa: BLE001
             fail(f"Exception during smoke: {type(exc).__name__}: {exc}")

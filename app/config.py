@@ -108,6 +108,8 @@ class Settings:
     google_application_credentials: Optional[str]
     firestore_project_id: Optional[str]
     inventory_fixture_path: Optional[str]
+    theme_id: str
+    theme_packages_dir: Path
 
     @property
     def active_order_path(self) -> Path:
@@ -128,6 +130,10 @@ def load_settings(
             "SELLMATE_MACHINE_ENV", DEFAULT_MACHINE_ENV_PATH
         )
         _load_env_file(path)
+        touchscreen_env = os.environ.get(
+            "SELLMATE_TOUCHSCREEN_ENV", "/etc/sellmate/touchscreen.env"
+        )
+        _load_env_file(touchscreen_env)
 
     machine_id = _require_str("MACHINE_ID")
     cloud_base = os.environ.get("CLOUD_BASE", "").strip().rstrip("/")
@@ -146,6 +152,10 @@ def load_settings(
     creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip() or None
     project = os.environ.get("FIRESTORE_PROJECT_ID", "").strip() or None
     fixture = os.environ.get("INVENTORY_FIXTURE_PATH", "").strip() or None
+    theme_id = os.environ.get("THEME_ID", "sellmate-default").strip() or "sellmate-default"
+    theme_packages_dir = Path(
+        os.environ.get("THEME_PACKAGES_DIR", "/etc/sellmate/themes")
+    ).expanduser()
 
     return Settings(
         machine_id=machine_id,
@@ -163,4 +173,6 @@ def load_settings(
         google_application_credentials=creds,
         firestore_project_id=project,
         inventory_fixture_path=fixture,
+        theme_id=theme_id,
+        theme_packages_dir=theme_packages_dir,
     )

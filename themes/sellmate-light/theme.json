@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "sellmate-light",
+  "display_name": "SellMate Light",
+  "mode": "light",
+  "brand": {
+    "business_name": "SellMate",
+    "logo": ""
+  },
+  "colors": {
+    "primary": "#1D4ED8",
+    "secondary": "#4B5563",
+    "accent": "#B45309",
+    "background": "#F9FAFB",
+    "surface": "#FFFFFF",
+    "text": "#111827",
+    "text_muted": "#4B5563",
+    "success": "#047857",
+    "warning": "#B45309",
+    "error": "#B91C1C",
+    "price": "#047857"
+  },
+  "typography": {
+    "family": "DejaVu Sans",
+    "scale": "comfortable"
+  },
+  "shape": {
+    "corner_radius": 16,
+    "button_style": "filled",
+    "button_shape": "rounded",
+    "product_card_style": "outlined"
+  },
+  "layout": {
+    "spacing_density": "comfortable",
+    "animation_intensity": "subtle"
+  },
+  "chrome": {
+    "background": {
+      "type": "solid",
+      "color": "#F9FAFB"
+    },
+    "attract_headline": "Touch to shop",
+    "attract_promo": "",
+    "banner": "",
+    "product_image_treatment": "cover_rounded"
+  }
+}
