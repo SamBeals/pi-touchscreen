@@ -21,15 +21,56 @@ import argparse
 import array
 import fcntl
 import glob
+import json
 import math
 import os
 import re
 import struct
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
+
+# region agent log
+_AGENT_LOG_PATHS = (
+    Path("/Users/sam/AndroidStudioProjects/.cursor/debug-898235.log"),
+    Path("/tmp/debug-898235.log"),
+)
+
+
+def _agent_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: Optional[dict] = None,
+    *,
+    run_id: str = "pre-fix",
+) -> None:
+    payload = {
+        "sessionId": "898235",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    line = json.dumps(payload, separators=(",", ":"))
+    print(f"[calibrate-debug] {message} {json.dumps(data or {})}", flush=True)
+    for path in _AGENT_LOG_PATHS:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+        except OSError:
+            continue
+
+
+# endregion
 
 # ---------------------------------------------------------------------------
 # Math: fit libinput calibration matrix (a b c d e f)
@@ -289,6 +330,23 @@ def apply_calibration(
     transform: str = "270",
     output: str = "HDMI-A-1",
 ) -> None:
+    # region agent log
+    _agent_log(
+        "H4",
+        "calibrate_touch.py:apply_calibration",
+        "apply started",
+        {
+            "matrix": matrix,
+            "device": device_name,
+            "display_env": str(display_env),
+            "udev": str(udev_path),
+            "rc_xml": str(rc_xml),
+            "transform": transform,
+            "uid": os.geteuid(),
+        },
+    )
+    # endregion
+
     # Display transform is independent of the measured touch matrix.
     # SellMate assembly orientation is 270°; CLI default matches that.
     output_val = output
@@ -300,29 +358,64 @@ def apply_calibration(
         touch_val = _grab_env(text, "SELLMATE_TOUCH_DEVICE", device_name) or device_name
 
     display_env.parent.mkdir(parents=True, exist_ok=True)
-    display_env.write_text(
+    env_body = (
         "# Managed by calibrate_touch.py (measured matrix)\n"
         "# Display transform is independent of the touch matrix.\n"
         f"SELLMATE_DISPLAY_OUTPUT={_shell_quote(output_val)}\n"
         f"SELLMATE_DISPLAY_TRANSFORM={_shell_quote(transform_val)}\n"
         f"SELLMATE_TOUCH_DEVICE={_shell_quote(touch_val)}\n"
-        f"SELLMATE_TOUCH_CALIBRATION_MATRIX={_shell_quote(matrix)}\n",
-        encoding="utf-8",
+        f"SELLMATE_TOUCH_CALIBRATION_MATRIX={_shell_quote(matrix)}\n"
     )
+    _write_text_flushed(display_env, env_body)
+    # region agent log
+    _agent_log(
+        "H4",
+        "calibrate_touch.py:apply_calibration",
+        "file written",
+        {"path": str(display_env), "bytes": len(env_body), "has_matrix_key": True},
+    )
+    # endregion
 
     udev_path.parent.mkdir(parents=True, exist_ok=True)
-    udev_path.write_text(
+    udev_body = (
         "# Managed by calibrate_touch.py (measured matrix)\n"
         f"# Display transform stays {transform_val}; matrix is empirical.\n"
         f'ACTION=="add|change", KERNEL=="event[0-9]*", '
         f'ENV{{ID_INPUT_TOUCHSCREEN}}=="1", ATTRS{{name}}=="{touch_val}", '
-        f'ENV{{LIBINPUT_CALIBRATION_MATRIX}}="{matrix}"\n',
-        encoding="utf-8",
+        f'ENV{{LIBINPUT_CALIBRATION_MATRIX}}="{matrix}"\n'
     )
+    _write_text_flushed(udev_path, udev_body)
+    # region agent log
+    _agent_log(
+        "H4",
+        "calibrate_touch.py:apply_calibration",
+        "file written",
+        {"path": str(udev_path), "bytes": len(udev_body)},
+    )
+    # endregion
 
     _patch_rc_xml(rc_xml, output_val, touch_val, matrix)
+    # region agent log
+    _agent_log(
+        "H4",
+        "calibrate_touch.py:apply_calibration",
+        "file written",
+        {"path": str(rc_xml), "exists": rc_xml.is_file()},
+    )
+    # endregion
     os.system("udevadm control --reload-rules 2>/dev/null || true")
     os.system("udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true")
+
+
+def _write_text_flushed(path: Path, body: str) -> None:
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write(body)
+        fh.flush()
+        os.fsync(fh.fileno())
+    # Verify read-back so permission/path errors surface immediately.
+    read_back = path.read_text(encoding="utf-8")
+    if read_back != body:
+        raise IOError(f"write verification failed for {path}")
 
 
 def _patch_rc_xml(rc_xml: Path, output: str, touch: str, matrix: str) -> None:
@@ -373,14 +466,21 @@ TARGETS = [
 
 
 def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
-    from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
+    from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer, QCoreApplication
     from PySide6.QtGui import QColor, QPainter, QPen, QFont
     from PySide6.QtWidgets import QApplication, QWidget
 
     touch = RawTouchDevice(device_name)
     raw_points: List[Tuple[float, float]] = []
     target_points: List[Tuple[float, float]] = []
-    state = {"index": 0, "message": "Preparing…", "error": "", "finished": False}
+    state = {
+        "index": 0,
+        "message": "Preparing…",
+        "error": "",
+        "finished": False,
+        "exit_requested": False,
+        "exec_returned": False,
+    }
 
     class CaptureWorker(QObject):
         sample = Signal(float, float)
@@ -439,14 +539,45 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             if event.key() == Qt.Key.Key_Escape:
                 state["error"] = "cancelled"
                 state["finished"] = True
-                QApplication.instance().quit()
+                request_app_exit("escape")
 
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     canvas = Canvas()
     thread = QThread()
     worker = CaptureWorker()
     worker.moveToThread(thread)
     thread.start()
+
+    def request_app_exit(reason: str) -> None:
+        if state["exit_requested"]:
+            # region agent log
+            _agent_log(
+                "H1",
+                "calibrate_touch.py:request_app_exit",
+                "app exit requested (duplicate ignored)",
+                {"reason": reason},
+            )
+            # endregion
+            return
+        state["exit_requested"] = True
+        # region agent log
+        _agent_log(
+            "H1",
+            "calibrate_touch.py:request_app_exit",
+            "app exit requested",
+            {
+                "reason": reason,
+                "index": state["index"],
+                "samples": len(raw_points),
+                "finished": state["finished"],
+            },
+        )
+        # endregion
+        try:
+            canvas.close()
+        except Exception:  # noqa: BLE001
+            pass
+        QCoreApplication.exit(0)
 
     def start_capture() -> None:
         idx = state["index"]
@@ -454,7 +585,18 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             state["finished"] = True
             state["message"] = "Done."
             canvas.update()
-            QTimer.singleShot(250, app.quit)
+            # region agent log
+            _agent_log(
+                "H5",
+                "calibrate_touch.py:start_capture",
+                "all targets complete; scheduling exit",
+                {"index": idx, "samples": len(raw_points)},
+            )
+            # endregion
+            # Prefer a deterministic exit over relying on app.quit() alone.
+            QTimer.singleShot(100, lambda: request_app_exit("normal_done"))
+            # Fail-safe: never remain stuck on "Done." indefinitely.
+            QTimer.singleShot(3000, lambda: request_app_exit("failsafe_after_done"))
             return
         name, _nx, _ny = TARGETS[idx]
         state["message"] = f"Tap and release: {name}"
@@ -463,27 +605,105 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
 
     def on_sample(x: float, y: float) -> None:
         idx = state["index"]
+        if idx >= len(TARGETS) or state["finished"]:
+            # region agent log
+            _agent_log(
+                "H2",
+                "calibrate_touch.py:on_sample",
+                "late sample ignored",
+                {"index": idx, "x": x, "y": y},
+            )
+            # endregion
+            return
         name, nx, ny = TARGETS[idx]
         raw_points.append((x, y))
         target_points.append((nx, ny))
         state["message"] = f"Recorded {name}: raw=({x:.3f}, {y:.3f})"
         state["index"] = idx + 1
         canvas.update()
+        # region agent log
+        _agent_log(
+            "H5",
+            "calibrate_touch.py:on_sample",
+            "final target accepted" if state["index"] >= len(TARGETS) else "target accepted",
+            {
+                "name": name,
+                "raw": [x, y],
+                "target": [nx, ny],
+                "index_after": state["index"],
+                "samples": len(raw_points),
+            },
+        )
+        # endregion
         QTimer.singleShot(400, start_capture)
 
     def on_failed(msg: str) -> None:
         state["error"] = msg
         state["finished"] = True
         canvas.update()
-        QTimer.singleShot(800, app.quit)
+        # region agent log
+        _agent_log(
+            "H2",
+            "calibrate_touch.py:on_failed",
+            "capture failed",
+            {"error": msg},
+        )
+        # endregion
+        QTimer.singleShot(200, lambda: request_app_exit("capture_failed"))
 
     worker.sample.connect(on_sample)
     worker.failed.connect(on_failed)
     QTimer.singleShot(400, start_capture)
+    # region agent log
+    _agent_log(
+        "H1",
+        "calibrate_touch.py:run_ui",
+        "entering app.exec",
+        {"device": device_name},
+    )
+    # endregion
     app.exec()
+    state["exec_returned"] = True
+    # region agent log
+    _agent_log(
+        "H1",
+        "calibrate_touch.py:run_ui",
+        "app.exec returned",
+        {
+            "exit_requested": state["exit_requested"],
+            "finished": state["finished"],
+            "samples": len(raw_points),
+            "thread_running": thread.isRunning(),
+        },
+    )
+    # endregion
+
+    # Unblock a stuck poll_sample (H2/H3) before waiting on the worker thread.
+    try:
+        touch.close()
+    except Exception:  # noqa: BLE001
+        pass
     thread.quit()
-    thread.wait(2000)
-    touch.close()
+    if not thread.wait(2000):
+        # region agent log
+        _agent_log(
+            "H3",
+            "calibrate_touch.py:run_ui",
+            "worker thread did not quit; terminating",
+            {},
+        )
+        # endregion
+        thread.terminate()
+        thread.wait(1000)
+    else:
+        # region agent log
+        _agent_log(
+            "H3",
+            "calibrate_touch.py:run_ui",
+            "worker thread quit cleanly",
+            {},
+        )
+        # endregion
 
     if state["error"] == "cancelled":
         raise RuntimeError("calibration cancelled")
@@ -522,8 +742,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.print_only:
-        import json
-
         payload = json.load(sys.stdin)
         coeffs = fit_affine(payload["raw"], payload["targets"])
         print(format_matrix(coeffs))
@@ -542,18 +760,50 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
     except Exception as exc:  # noqa: BLE001
         print(f"Calibration failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        # region agent log
+        _agent_log(
+            "H1",
+            "calibrate_touch.py:main",
+            "run_ui failed",
+            {"error": f"{type(exc).__name__}: {exc}"},
+        )
+        # endregion
         return 1
 
-    coeffs = fit_affine(raw_pts, tgt_pts)
-    matrix = format_matrix(coeffs)
-    err = rms_error(coeffs, raw_pts, tgt_pts)
-    print("Measured raw points:", raw_pts)
-    print("Target points:      ", tgt_pts)
-    print("Calibration matrix: ", matrix)
-    print(f"Fit RMS (normalized): {err:.6f}")
+    try:
+        coeffs = fit_affine(raw_pts, tgt_pts)
+        matrix = format_matrix(coeffs)
+        err = rms_error(coeffs, raw_pts, tgt_pts)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Matrix fit failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        # region agent log
+        _agent_log(
+            "H4",
+            "calibrate_touch.py:main",
+            "matrix fit failed",
+            {"error": f"{type(exc).__name__}: {exc}"},
+        )
+        # endregion
+        return 1
+
+    # region agent log
+    _agent_log(
+        "H4",
+        "calibrate_touch.py:main",
+        "matrix fit completed",
+        {"matrix": matrix, "rms": err, "raw": raw_pts, "targets": tgt_pts},
+    )
+    # endregion
+    print("Measured raw points:", raw_pts, flush=True)
+    print("Target points:      ", tgt_pts, flush=True)
+    print("Calibration matrix: ", matrix, flush=True)
+    print(f"Fit RMS (normalized): {err:.6f}", flush=True)
 
     if not args.apply:
-        print(f"Re-run with --apply to write configs (keeps transform {args.transform}).")
+        print(
+            f"Re-run with --apply to write configs (keeps transform {args.transform}).",
+            flush=True,
+        )
         return 0
 
     needs_root = str(args.display_env).startswith("/etc/") or str(args.udev).startswith(
@@ -563,20 +813,42 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Writing /etc paths requires root (sudo -E … --apply).", file=sys.stderr)
         return 1
 
-    apply_calibration(
-        matrix=matrix,
-        device_name=args.device,
-        display_env=Path(args.display_env),
-        udev_path=Path(args.udev),
-        rc_xml=Path(args.rc_xml),
-        transform=args.transform,
-        output=args.output,
+    try:
+        apply_calibration(
+            matrix=matrix,
+            device_name=args.device,
+            display_env=Path(args.display_env),
+            udev_path=Path(args.udev),
+            rc_xml=Path(args.rc_xml),
+            transform=args.transform,
+            output=args.output,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"APPLY FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        # region agent log
+        _agent_log(
+            "H4",
+            "calibrate_touch.py:main",
+            "apply failed",
+            {"error": f"{type(exc).__name__}: {exc}"},
+        )
+        # endregion
+        return 1
+
+    print("Wrote:", flush=True)
+    print(f"  {args.display_env}", flush=True)
+    print(f"  {args.udev}", flush=True)
+    print(f"  {args.rc_xml}", flush=True)
+    print("Reboot (or restart the graphical session) so touch reloads.", flush=True)
+    # region agent log
+    _agent_log(
+        "H4",
+        "calibrate_touch.py:main",
+        "apply succeeded; exiting 0",
+        {"matrix": matrix},
     )
-    print("Wrote:")
-    print(f"  {args.display_env}")
-    print(f"  {args.udev}")
-    print(f"  {args.rc_xml}")
-    print("Reboot (or restart the graphical session) so touch reloads.")
+    # endregion
     return 0
 
 
