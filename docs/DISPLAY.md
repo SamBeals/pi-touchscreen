@@ -99,12 +99,20 @@ What the calibrator does:
    bottom-right, center.
 2. Reads **raw** absolute coordinates from `/dev/input/event*` (bypasses
    libinput calibration).
-3. Fits affine `x' = a x + b y + c`, `y' = d x + e y + f`.
-4. Writes the measured matrix to:
-   - `/etc/sellmate/display.env`
-   - `/etc/udev/rules.d/99-sellmate-touch-portrait.rules`
-   - `~/.config/labwc/rc.xml`
-5. Leaves **display transform at 270°** unchanged.
+3. Fits affine `M`: `x' = a x + b y + c`, `y' = d x + e y + f` (empirical).
+4. **Composes** a libinput-facing matrix for display transform 270:
+   `LIBINPUT = R_ccw90 ∘ M` where `R_ccw90` is `(x,y) → (1-y, x)`.
+   Hardware showed that installing `M` alone yields touch events rotated
+   **90° clockwise** vs the visual desktop; the CCW correction belongs in the
+   **generated calibration matrix** (udev + labwc `calibrationMatrix`), not in
+   the display transform, not in the SellMate app, and not as a generic 90/270
+   preset that replaces `M`.
+5. Writes:
+   - `/etc/sellmate/display.env` (`SELLMATE_DISPLAY_TRANSFORM=270`, measured +
+     composed matrices)
+   - `/etc/udev/rules.d/99-sellmate-touch-portrait.rules` (composed matrix)
+   - `~/.config/labwc/rc.xml` (composed `calibrationMatrix` + `mapToOutput`)
+6. Leaves **display transform at 270°** unchanged.
 
 Dry-run (print matrix only, no writes):
 

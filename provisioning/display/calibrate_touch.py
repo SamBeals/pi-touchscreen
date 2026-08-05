@@ -130,8 +130,93 @@ def _solve3(m: List[List[float]], rhs: List[float]) -> Tuple[float, float, float
     return (a[0][3], a[1][3], a[2][3])
 
 
+Affine = Tuple[float, float, float, float, float, float]
+
+# Normalized-space 90° counterclockwise about the unit square:
+#   (x, y) -> (1 - y, x)
+# Used only as a libinput correction composed with the empirical fit.
+ROTATE_CCW_90: Affine = (0.0, -1.0, 1.0, 1.0, 0.0, 0.0)
+ROTATE_CW_90: Affine = (0.0, 1.0, 0.0, -1.0, 0.0, 1.0)
+
+
 def format_matrix(coeffs: Sequence[float]) -> str:
     return " ".join(f"{v:.6f}" for v in coeffs)
+
+
+def parse_matrix(text: str) -> Affine:
+    parts = [float(x) for x in text.split()]
+    if len(parts) != 6:
+        raise ValueError(f"expected 6 matrix coefficients, got {len(parts)}")
+    return (parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+
+
+def apply_affine(coeffs: Sequence[float], x: float, y: float) -> Tuple[float, float]:
+    a, b, c, d, e, f = coeffs
+    return (a * x + b * y + c, d * x + e * y + f)
+
+
+def compose_affine(left: Sequence[float], right: Sequence[float]) -> Affine:
+    """Return left ∘ right (apply right first, then left) as libinput a..f."""
+    la, lb, lc, ld, le, lf = left
+    ra, rb, rc, rd, re, rf = right
+    return (
+        la * ra + lb * rd,
+        la * rb + lb * re,
+        la * rc + lb * rf + lc,
+        ld * ra + le * rd,
+        ld * rb + le * re,
+        ld * rc + le * rf + lf,
+    )
+
+
+def libinput_matrix_for_display(
+    measured: Sequence[float],
+    *,
+    display_transform: str = "270",
+) -> Affine:
+    """Compose the empirical fit into the matrix written to libinput/udev/labwc.
+
+    Pipeline finding (SellMate hardware, transform 270):
+      - Calibrator fits M: raw evdev → logical on-screen targets (low RMS).
+      - Display transform stays at 270 via wlr-randr (unchanged).
+      - Writing M alone to LIBINPUT_CALIBRATION_MATRIX yields touch events
+        that reach Qt rotated 90° clockwise vs the visual desktop.
+      - Correction belongs in the *generated libinput matrix*: left-multiply
+        a 90° CCW normalized rotation so libinput emits R_ccw90 ∘ M.
+      - Do not change the app, display transform, or replace M with a generic
+        90/270 preset.
+    """
+    measured_t = (
+        float(measured[0]),
+        float(measured[1]),
+        float(measured[2]),
+        float(measured[3]),
+        float(measured[4]),
+        float(measured[5]),
+    )
+    if display_transform == "270":
+        return compose_affine(ROTATE_CCW_90, measured_t)
+    return measured_t
+
+
+def simulate_touch_to_qt(
+    libinput_matrix: Sequence[float],
+    raw_x: float,
+    raw_y: float,
+    *,
+    stack_extra_cw90: bool = True,
+) -> Tuple[float, float]:
+    """Model observed compositor stack when feeding libinput a calibration matrix.
+
+    Hardware: with display transform 270, installing the bare empirical matrix
+    makes Qt see coordinates rotated 90° CW from the calibrator targets. The
+    ``stack_extra_cw90`` flag models that residual so tests can verify the
+    composed correction cancels it.
+    """
+    x, y = apply_affine(libinput_matrix, raw_x, raw_y)
+    if stack_extra_cw90:
+        x, y = apply_affine(ROTATE_CW_90, x, y)
+    return (x, y)
 
 
 def rms_error(
@@ -139,11 +224,9 @@ def rms_error(
     raw: Sequence[Tuple[float, float]],
     targets: Sequence[Tuple[float, float]],
 ) -> float:
-    a, b, c, d, e, f = coeffs
     err = 0.0
     for (x, y), (tx, ty) in zip(raw, targets):
-        px = a * x + b * y + c
-        py = d * x + e * y + f
+        px, py = apply_affine(coeffs, x, y)
         err += (px - tx) ** 2 + (py - ty) ** 2
     return math.sqrt(err / max(1, len(raw)))
 
@@ -329,7 +412,15 @@ def apply_calibration(
     rc_xml: Path,
     transform: str = "270",
     output: str = "HDMI-A-1",
+    measured_matrix: Optional[str] = None,
 ) -> None:
+    """Write libinput/labwc touch calibration. ``matrix`` is what libinput loads.
+
+    For transform 270, callers should pass the *composed* matrix
+    (R_ccw90 ∘ measured) as ``matrix``, and optionally the bare empirical fit
+    as ``measured_matrix`` for diagnostics. Display transform is never derived
+    from the touch matrix.
+    """
     # region agent log
     _agent_log(
         "H4",
@@ -337,6 +428,7 @@ def apply_calibration(
         "apply started",
         {
             "matrix": matrix,
+            "measured_matrix": measured_matrix,
             "device": device_name,
             "display_env": str(display_env),
             "udev": str(udev_path),
@@ -358,12 +450,21 @@ def apply_calibration(
         touch_val = _grab_env(text, "SELLMATE_TOUCH_DEVICE", device_name) or device_name
 
     display_env.parent.mkdir(parents=True, exist_ok=True)
+    measured_line = ""
+    if measured_matrix:
+        measured_line = (
+            f"SELLMATE_TOUCH_CALIBRATION_MATRIX_MEASURED="
+            f"{_shell_quote(measured_matrix)}\n"
+        )
     env_body = (
-        "# Managed by calibrate_touch.py (measured matrix)\n"
-        "# Display transform is independent of the touch matrix.\n"
+        "# Managed by calibrate_touch.py\n"
+        "# Display transform is independent of the touch matrix (keep 270).\n"
+        "# SELLMATE_TOUCH_CALIBRATION_MATRIX is libinput-facing "
+        "(empirical fit composed with 90° CCW for transform 270).\n"
         f"SELLMATE_DISPLAY_OUTPUT={_shell_quote(output_val)}\n"
         f"SELLMATE_DISPLAY_TRANSFORM={_shell_quote(transform_val)}\n"
         f"SELLMATE_TOUCH_DEVICE={_shell_quote(touch_val)}\n"
+        f"{measured_line}"
         f"SELLMATE_TOUCH_CALIBRATION_MATRIX={_shell_quote(matrix)}\n"
     )
     _write_text_flushed(display_env, env_body)
@@ -372,14 +473,21 @@ def apply_calibration(
         "H4",
         "calibrate_touch.py:apply_calibration",
         "file written",
-        {"path": str(display_env), "bytes": len(env_body), "has_matrix_key": True},
+        {
+            "path": str(display_env),
+            "bytes": len(env_body),
+            "has_matrix_key": True,
+            "transform": transform_val,
+        },
     )
     # endregion
 
     udev_path.parent.mkdir(parents=True, exist_ok=True)
     udev_body = (
-        "# Managed by calibrate_touch.py (measured matrix)\n"
-        f"# Display transform stays {transform_val}; matrix is empirical.\n"
+        "# Managed by calibrate_touch.py\n"
+        f"# Display transform stays {transform_val}.\n"
+        "# LIBINPUT_CALIBRATION_MATRIX = empirical fit ∘ 90° CCW correction "
+        "(not a generic transform preset).\n"
         f'ACTION=="add|change", KERNEL=="event[0-9]*", '
         f'ENV{{ID_INPUT_TOUCHSCREEN}}=="1", ATTRS{{name}}=="{touch_val}", '
         f'ENV{{LIBINPUT_CALIBRATION_MATRIX}}="{matrix}"\n'
@@ -875,10 +983,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.print_only:
         payload = json.load(sys.stdin)
+        transform = str(payload.get("transform", "270"))
         coeffs = fit_affine(payload["raw"], payload["targets"])
-        print(format_matrix(coeffs))
+        composed = libinput_matrix_for_display(coeffs, display_transform=transform)
+        # stdout: libinput-facing matrix (composed). stderr: diagnostics.
+        print(format_matrix(composed))
         print(
-            f"rms={rms_error(coeffs, payload['raw'], payload['targets']):.6f}",
+            f"measured={format_matrix(coeffs)} "
+            f"rms={rms_error(coeffs, payload['raw'], payload['targets']):.6f} "
+            f"transform={transform}",
             file=sys.stderr,
         )
         return 0
@@ -903,9 +1016,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     try:
-        coeffs = fit_affine(raw_pts, tgt_pts)
-        matrix = format_matrix(coeffs)
-        err = rms_error(coeffs, raw_pts, tgt_pts)
+        measured = fit_affine(raw_pts, tgt_pts)
+        composed = libinput_matrix_for_display(
+            measured, display_transform=args.transform
+        )
+        measured_s = format_matrix(measured)
+        matrix = format_matrix(composed)
+        err = rms_error(measured, raw_pts, tgt_pts)
     except Exception as exc:  # noqa: BLE001
         print(f"Matrix fit failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         # region agent log
@@ -923,12 +1040,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         "H4",
         "calibrate_touch.py:main",
         "matrix fit completed",
-        {"matrix": matrix, "rms": err, "raw": raw_pts, "targets": tgt_pts},
+        {
+            "measured": measured_s,
+            "libinput_composed": matrix,
+            "rms": err,
+            "raw": raw_pts,
+            "targets": tgt_pts,
+            "transform": args.transform,
+        },
     )
     # endregion
     print("Measured raw points:", raw_pts, flush=True)
     print("Target points:      ", tgt_pts, flush=True)
-    print("Calibration matrix: ", matrix, flush=True)
+    print("Measured matrix:    ", measured_s, flush=True)
+    print("Libinput matrix:    ", matrix, flush=True)
+    print(
+        "(libinput = 90° CCW ∘ measured when transform is 270; display stays 270)",
+        flush=True,
+    )
     print(f"Fit RMS (normalized): {err:.6f}", flush=True)
 
     if not args.apply:
@@ -948,6 +1077,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         apply_calibration(
             matrix=matrix,
+            measured_matrix=measured_s,
             device_name=args.device,
             display_env=Path(args.display_env),
             udev_path=Path(args.udev),
