@@ -5,8 +5,12 @@
 -->
 <openbox_config xmlns="http://openbox.org/3.4/rc">
   <!-- BEGIN SELLMATE-PORTRAIT-DISPLAY -->
-  <touch deviceName="__TOUCH_DEVICE__" mapToOutput="__OUTPUT__" mouseEmulation="no" />
+  <touch deviceName="" mapToOutput="__OUTPUT__" mouseEmulation="yes" />
+  <touch deviceName="__TOUCH_DEVICE__" mapToOutput="__OUTPUT__" mouseEmulation="yes" />
   <libinput>
+    <device category="touch">
+      <calibrationMatrix>__CALIBRATION_MATRIX__</calibrationMatrix>
+    </device>
     <device category="__TOUCH_DEVICE__">
       <calibrationMatrix>__CALIBRATION_MATRIX__</calibrationMatrix>
     </device>

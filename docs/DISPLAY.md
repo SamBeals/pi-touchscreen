@@ -20,7 +20,7 @@ Portrait desktop + touch alignment are configured once on the machine via the
 
 | Path | Role |
 |---|---|
-| `/etc/sellmate/display.env` | Output name, transform, touch device, calibration matrix |
+| `/etc/sellmate/display.env` | Output name, transform, touch device, calibration matrix (**shell-quoted** values) |
 | `/usr/local/bin/sellmate-apply-portrait-display` | Runs `wlr-randr --transform` at session start |
 | `~/.config/labwc/autostart` | Calls the apply script on every labwc login |
 | `~/.config/labwc/rc.xml` | `mapToOutput` + libinput `calibrationMatrix` for touch |
@@ -55,18 +55,32 @@ sudo reboot
 
 ### What the installer does
 
-1. Writes `/etc/sellmate/display.env`.
+1. Writes `/etc/sellmate/display.env` with **shell-quoted** values (single quotes,
+   or `printf %q` when needed), then validates with `bash -n` and a `source`
+   round-trip. This is required because touch device names (e.g.
+   `yldzkj USB2IIC_CTP_CONTROL`) and calibration matrices contain spaces. If you
+   edit the file by hand, keep every value quoted.
 2. Installs `/usr/local/bin/sellmate-apply-portrait-display`.
 3. Appends a marked block to `~/.config/labwc/autostart` so the transform is
    applied automatically whenever labwc starts (**no manual `wlr-randr` after boot**).
-4. Writes/merges `~/.config/labwc/rc.xml`:
-   - `<touch … mapToOutput="HDMI-A-1" />` so touch is bound to the HDMI output
-   - `<calibrationMatrix>…</calibrationMatrix>` matching the chosen transform  
-     (`90` → `0 -1 1 1 0 0`, `270` → `0 1 0 -1 1 0`)
+4. Writes/merges `~/.config/labwc/rc.xml` (Pi OS `openbox_config` root):
+   - Catch-all + named `<touch … mapToOutput="…" mouseEmulation="yes" />`
+   - `<libinput>` `calibrationMatrix` for both `category="touch"` and the
+     exact device name (e.g. `yldzkj USB2IIC_CTP_CONTROL`)
+5. Installs `/etc/udev/rules.d/99-sellmate-touch-portrait.rules` so libinput
+   applies the same `LIBINPUT_CALIBRATION_MATRIX` at device add (verifiable
+   with `libinput list-devices` → Calibration must **not** be identity).
 
-Manual `wlr-randr --transform` alone is **not** enough: without the rc.xml touch
-mapping + matrix, touch coordinates stay wrong. Do not rely on ad-hoc shell
-commands; use the installer.
+`wlr-randr --transform` alone rotates pixels only. Touch needs **both**
+output mapping and a calibration matrix (labwc docs: use `calibrationMatrix`
+with output rotation). Prefer the installer over hand-edited one-offs.
+
+Matrix pairing:
+
+| `--transform` | Calibration matrix |
+|---|---|
+| `90` | `0.0 -1.0 1.0 1.0 0.0 0.0` |
+| `270` | `0.0 1.0 0.0 -1.0 1.0 0.0` |
 
 ## Verification (after reboot)
 
@@ -83,16 +97,29 @@ wlr-randr
 1. `wlr-randr` shows your HDMI output with `Transform: 90` or `Transform: 270`
    — **not** `Transform: normal`.
 2. Logical mode is portrait (height > width), typically about `600x1024`.
-3. Tapping each corner hits the matching on-screen position.
-4. SellMate starts fullscreen into that portrait desktop with no manual steps.
+3. `libinput list-devices` for `yldzkj USB2IIC_CTP_CONTROL` shows a
+   **non-identity** `Calibration:` line.
+4. Tapping each corner hits the matching on-screen position.
+5. SellMate starts fullscreen into that portrait desktop with no manual steps.
 
 If transform is still `normal`, confirm labwc is the active compositor, that
 `~/.config/labwc/autostart` contains the `SELLMATE-PORTRAIT-DISPLAY` block, and
 re-run the installer + reboot.
 
-If the picture is rotated but touch is wrong, re-run with the correct
-`--touch "Device Name"` from `libinput list-devices`, or flip `--transform`
-between `90` and `270` (matrix is updated to match).
+If the picture is rotated but touch still tracks as landscape:
+
+```bash
+libinput list-devices | less   # confirm Device: name + Calibration:
+sudo cat /etc/udev/rules.d/99-sellmate-touch-portrait.rules
+grep -A20 'SELLMATE-PORTRAIT' ~/.config/labwc/rc.xml
+sudo ./provisioning/display/install-portrait-display.sh \
+  --touch "yldzkj USB2IIC_CTP_CONTROL" --transform 90
+sudo reboot
+```
+
+If Calibration is correct but axes feel mirrored/inverted, re-run with
+`--transform 270` (pairs the alternate matrix). Labwc libinput settings from
+`rc.xml` need a **session restart/reboot**; `--reconfigure` alone is not enough.
 
 ## SellMate systemd unit
 
