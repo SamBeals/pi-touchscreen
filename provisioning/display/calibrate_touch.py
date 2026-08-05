@@ -470,6 +470,7 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
         Qt,
         QThread,
         Signal,
+        Slot,
         QObject,
         QTimer,
         QEventLoop,
@@ -489,6 +490,12 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
         "exec_returned": False,
     }
 
+    app = QApplication.instance() or QApplication(sys.argv)
+    # We own shutdown via QEventLoop.quit(); window close must not block exit.
+    app.setQuitOnLastWindowClosed(False)
+    loop = QEventLoop()
+    thread = QThread()
+
     class CaptureWorker(QObject):
         sample = Signal(float, float)
         failed = Signal(str)
@@ -496,9 +503,11 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
 
         def __init__(self) -> None:
             super().__init__()
-            # Queued across threads so poll_sample never blocks the UI.
-            self.request.connect(self.run_one)
+            # request is emitted from the GUI thread; QueuedConnection runs
+            # poll_sample on this worker's thread.
+            self.request.connect(self.run_one, Qt.ConnectionType.QueuedConnection)
 
+        @Slot()
         def run_one(self) -> None:
             if state["finished"] or state["exit_requested"]:
                 return
@@ -511,6 +520,207 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
                 if not state["exit_requested"]:
                     self.failed.emit(f"{type(exc).__name__}: {exc}")
 
+    class UiController(QObject):
+        """All UI/state mutations and loop.quit() must run on the GUI thread.
+
+        Connecting worker signals to plain Python callables uses DirectConnection
+        (no receiver QObject affinity), so on_sample previously ran on the
+        worker thread and loop.quit() was a no-op / hang.
+        """
+
+        # Emitted from any thread; always delivered Queued to this object.
+        _exit = Signal(str)
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._exit.connect(self._do_exit, Qt.ConnectionType.QueuedConnection)
+
+        def request_app_exit(self, reason: str) -> None:
+            # Marshal onto the GUI thread even if already there (queued), so
+            # quit never runs mid-slot on a foreign thread.
+            if QThread.currentThread() != self.thread():
+                # region agent log
+                _agent_log(
+                    "H1",
+                    "calibrate_touch.py:request_app_exit",
+                    "marshaling exit onto GUI thread",
+                    {
+                        "reason": reason,
+                        "on_main_thread": False,
+                    },
+                )
+                # endregion
+            self._exit.emit(reason)
+
+        @Slot(str)
+        def _do_exit(self, reason: str) -> None:
+            if state["exit_requested"]:
+                # region agent log
+                _agent_log(
+                    "H1",
+                    "calibrate_touch.py:_do_exit",
+                    "app exit requested (duplicate ignored)",
+                    {
+                        "reason": reason,
+                        "on_main_thread": QThread.currentThread() == app.thread(),
+                    },
+                )
+                # endregion
+                return
+            state["exit_requested"] = True
+            state["finished"] = True
+            # region agent log
+            _agent_log(
+                "H1",
+                "calibrate_touch.py:_do_exit",
+                "app exit requested",
+                {
+                    "reason": reason,
+                    "index": state["index"],
+                    "samples": len(raw_points),
+                    "finished": state["finished"],
+                    "on_main_thread": QThread.currentThread() == app.thread(),
+                },
+            )
+            # endregion
+            if QThread.currentThread() != app.thread():
+                # region agent log
+                _agent_log(
+                    "H1",
+                    "calibrate_touch.py:_do_exit",
+                    "refusing loop.quit off GUI thread",
+                    {"reason": reason},
+                )
+                # endregion
+                return
+
+            # region agent log
+            _agent_log(
+                "H1",
+                "calibrate_touch.py:_do_exit",
+                "calling loop.quit",
+                {"reason": reason, "on_main_thread": True},
+            )
+            # endregion
+            loop.quit()
+
+            try:
+                canvas.hide()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                touch.close()
+            except Exception:  # noqa: BLE001
+                pass
+            thread.quit()
+
+            # region agent log
+            _agent_log(
+                "H1",
+                "calibrate_touch.py:_do_exit",
+                "loop.quit issued; returning to event loop",
+                {"reason": reason},
+            )
+            # endregion
+
+        @Slot()
+        def start_capture(self) -> None:
+            idx = state["index"]
+            if state["exit_requested"]:
+                return
+            if idx >= len(TARGETS):
+                state["finished"] = True
+                state["message"] = "Done."
+                canvas.update()
+                # region agent log
+                _agent_log(
+                    "H5",
+                    "calibrate_touch.py:start_capture",
+                    "all targets complete; scheduling exit",
+                    {
+                        "index": idx,
+                        "samples": len(raw_points),
+                        "on_main_thread": QThread.currentThread() == app.thread(),
+                    },
+                )
+                # endregion
+                QTimer.singleShot(0, lambda: self.request_app_exit("normal_done"))
+                QTimer.singleShot(3000, lambda: self.request_app_exit("failsafe_after_done"))
+                return
+            name, _nx, _ny = TARGETS[idx]
+            state["message"] = f"Tap and release: {name}"
+            canvas.update()
+            worker.request.emit()
+
+        @Slot(float, float)
+        def on_sample(self, x: float, y: float) -> None:
+            # region agent log
+            _agent_log(
+                "H1",
+                "calibrate_touch.py:on_sample",
+                "on_sample entered",
+                {
+                    "on_main_thread": QThread.currentThread() == app.thread(),
+                    "index": state["index"],
+                },
+            )
+            # endregion
+            idx = state["index"]
+            if idx >= len(TARGETS) or state["finished"] or state["exit_requested"]:
+                # region agent log
+                _agent_log(
+                    "H2",
+                    "calibrate_touch.py:on_sample",
+                    "late sample ignored",
+                    {"index": idx, "x": x, "y": y},
+                )
+                # endregion
+                return
+            name, nx, ny = TARGETS[idx]
+            raw_points.append((x, y))
+            target_points.append((nx, ny))
+            state["message"] = f"Recorded {name}: raw=({x:.3f}, {y:.3f})"
+            state["index"] = idx + 1
+            canvas.update()
+            # region agent log
+            _agent_log(
+                "H5",
+                "calibrate_touch.py:on_sample",
+                "final target accepted"
+                if state["index"] >= len(TARGETS)
+                else "target accepted",
+                {
+                    "name": name,
+                    "raw": [x, y],
+                    "target": [nx, ny],
+                    "index_after": state["index"],
+                    "samples": len(raw_points),
+                    "on_main_thread": QThread.currentThread() == app.thread(),
+                },
+            )
+            # endregion
+            QTimer.singleShot(400, self.start_capture)
+
+        @Slot(str)
+        def on_failed(self, msg: str) -> None:
+            if state["exit_requested"]:
+                return
+            state["error"] = msg
+            state["finished"] = True
+            canvas.update()
+            # region agent log
+            _agent_log(
+                "H2",
+                "calibrate_touch.py:on_failed",
+                "capture failed",
+                {
+                    "error": msg,
+                    "on_main_thread": QThread.currentThread() == app.thread(),
+                },
+            )
+            # endregion
+            QTimer.singleShot(0, lambda: self.request_app_exit("capture_failed"))
+
     class Canvas(QWidget):
         def __init__(self) -> None:
             super().__init__()
@@ -519,10 +729,9 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             self.showFullScreen()
 
         def closeEvent(self, event) -> None:  # noqa: N802
-            # Never allow window teardown to drive / block process lifetime.
             event.accept()
             if not state["exit_requested"]:
-                request_app_exit("close_event")
+                controller.request_app_exit("close_event")
 
         def paintEvent(self, _event) -> None:  # noqa: N802
             p = QPainter(self)
@@ -558,166 +767,29 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             if event.key() == Qt.Key.Key_Escape:
                 state["error"] = "cancelled"
                 state["finished"] = True
-                request_app_exit("escape")
+                controller.request_app_exit("escape")
 
-    app = QApplication.instance() or QApplication(sys.argv)
-    # We own shutdown via QEventLoop.quit(); window close must not block exit.
-    app.setQuitOnLastWindowClosed(False)
+    controller = UiController()  # affinity: GUI thread
     canvas = Canvas()
-    thread = QThread()
     worker = CaptureWorker()
     worker.moveToThread(thread)
     thread.start()
-    loop = QEventLoop()
 
-    def request_app_exit(reason: str) -> None:
-        if state["exit_requested"]:
-            # region agent log
-            _agent_log(
-                "H1",
-                "calibrate_touch.py:request_app_exit",
-                "app exit requested (duplicate ignored)",
-                {"reason": reason},
-            )
-            # endregion
-            return
-        state["exit_requested"] = True
-        state["finished"] = True
-        # region agent log
-        _agent_log(
-            "H1",
-            "calibrate_touch.py:request_app_exit",
-            "app exit requested",
-            {
-                "reason": reason,
-                "index": state["index"],
-                "samples": len(raw_points),
-                "finished": state["finished"],
-                "on_main_thread": QThread.currentThread() == app.thread(),
-            },
-        )
-        # endregion
-
-        # 1) Leave the local event loop FIRST. Do not call canvas.close() here:
-        #    Wayland fullscreen close can block and was preventing exit() from
-        #    ever being reached (logs stopped after "app exit requested").
-        # region agent log
-        _agent_log(
-            "H1",
-            "calibrate_touch.py:request_app_exit",
-            "calling loop.quit",
-            {"reason": reason},
-        )
-        # endregion
-        loop.quit()
-
-        # 2) Non-blocking hide only (teardown happens after loop.exec returns).
-        try:
-            canvas.hide()
-        except Exception:  # noqa: BLE001
-            pass
-
-        # 3) Unblock worker I/O; join happens after the UI loop returns.
-        try:
-            touch.close()
-        except Exception:  # noqa: BLE001
-            pass
-        thread.quit()
-
-        # region agent log
-        _agent_log(
-            "H1",
-            "calibrate_touch.py:request_app_exit",
-            "loop.quit issued; returning to event loop",
-            {"reason": reason},
-        )
-        # endregion
-
-    def start_capture() -> None:
-        idx = state["index"]
-        if state["exit_requested"]:
-            return
-        if idx >= len(TARGETS):
-            state["finished"] = True
-            state["message"] = "Done."
-            canvas.update()
-            # region agent log
-            _agent_log(
-                "H5",
-                "calibrate_touch.py:start_capture",
-                "all targets complete; scheduling exit",
-                {"index": idx, "samples": len(raw_points)},
-            )
-            # endregion
-            # Defer quit so the current paint/timer stack can unwind.
-            QTimer.singleShot(0, lambda: request_app_exit("normal_done"))
-            # Fail-safe if the deferred quit is somehow lost.
-            QTimer.singleShot(3000, lambda: request_app_exit("failsafe_after_done"))
-            return
-        name, _nx, _ny = TARGETS[idx]
-        state["message"] = f"Tap and release: {name}"
-        canvas.update()
-        worker.request.emit()
-
-    def on_sample(x: float, y: float) -> None:
-        idx = state["index"]
-        if idx >= len(TARGETS) or state["finished"] or state["exit_requested"]:
-            # region agent log
-            _agent_log(
-                "H2",
-                "calibrate_touch.py:on_sample",
-                "late sample ignored",
-                {"index": idx, "x": x, "y": y},
-            )
-            # endregion
-            return
-        name, nx, ny = TARGETS[idx]
-        raw_points.append((x, y))
-        target_points.append((nx, ny))
-        state["message"] = f"Recorded {name}: raw=({x:.3f}, {y:.3f})"
-        state["index"] = idx + 1
-        canvas.update()
-        # region agent log
-        _agent_log(
-            "H5",
-            "calibrate_touch.py:on_sample",
-            "final target accepted" if state["index"] >= len(TARGETS) else "target accepted",
-            {
-                "name": name,
-                "raw": [x, y],
-                "target": [nx, ny],
-                "index_after": state["index"],
-                "samples": len(raw_points),
-            },
-        )
-        # endregion
-        QTimer.singleShot(400, start_capture)
-
-    def on_failed(msg: str) -> None:
-        if state["exit_requested"]:
-            return
-        state["error"] = msg
-        state["finished"] = True
-        canvas.update()
-        # region agent log
-        _agent_log(
-            "H2",
-            "calibrate_touch.py:on_failed",
-            "capture failed",
-            {"error": msg},
-        )
-        # endregion
-        QTimer.singleShot(0, lambda: request_app_exit("capture_failed"))
-
-    worker.sample.connect(on_sample)
-    worker.failed.connect(on_failed)
-    QTimer.singleShot(400, start_capture)
+    # CRITICAL: QueuedConnection so slots run on controller's (GUI) thread.
+    # Plain callables previously ran on the worker thread (DirectConnection).
+    worker.sample.connect(controller.on_sample, Qt.ConnectionType.QueuedConnection)
+    worker.failed.connect(controller.on_failed, Qt.ConnectionType.QueuedConnection)
+    QTimer.singleShot(400, controller.start_capture)
     # region agent log
     _agent_log(
         "H1",
         "calibrate_touch.py:run_ui",
         "entering app.exec",
-        {"device": device_name, "loop": "QEventLoop"},
+        {
+            "device": device_name,
+            "loop": "QEventLoop",
+            "controller_thread_is_app": controller.thread() == app.thread(),
+        },
     )
     # endregion
     loop.exec()
