@@ -466,7 +466,14 @@ TARGETS = [
 
 
 def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
-    from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer, QCoreApplication
+    from PySide6.QtCore import (
+        Qt,
+        QThread,
+        Signal,
+        QObject,
+        QTimer,
+        QEventLoop,
+    )
     from PySide6.QtGui import QColor, QPainter, QPen, QFont
     from PySide6.QtWidgets import QApplication, QWidget
 
@@ -493,17 +500,29 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             self.request.connect(self.run_one)
 
         def run_one(self) -> None:
+            if state["finished"] or state["exit_requested"]:
+                return
             try:
                 x, y = touch.poll_sample(timeout_s=90.0)
+                if state["finished"] or state["exit_requested"]:
+                    return
                 self.sample.emit(x, y)
             except Exception as exc:  # noqa: BLE001
-                self.failed.emit(f"{type(exc).__name__}: {exc}")
+                if not state["exit_requested"]:
+                    self.failed.emit(f"{type(exc).__name__}: {exc}")
 
     class Canvas(QWidget):
         def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("SellMate Touch Calibration")
+            self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
             self.showFullScreen()
+
+        def closeEvent(self, event) -> None:  # noqa: N802
+            # Never allow window teardown to drive / block process lifetime.
+            event.accept()
+            if not state["exit_requested"]:
+                request_app_exit("close_event")
 
         def paintEvent(self, _event) -> None:  # noqa: N802
             p = QPainter(self)
@@ -542,11 +561,14 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
                 request_app_exit("escape")
 
     app = QApplication.instance() or QApplication(sys.argv)
+    # We own shutdown via QEventLoop.quit(); window close must not block exit.
+    app.setQuitOnLastWindowClosed(False)
     canvas = Canvas()
     thread = QThread()
     worker = CaptureWorker()
     worker.moveToThread(thread)
     thread.start()
+    loop = QEventLoop()
 
     def request_app_exit(reason: str) -> None:
         if state["exit_requested"]:
@@ -560,6 +582,7 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             # endregion
             return
         state["exit_requested"] = True
+        state["finished"] = True
         # region agent log
         _agent_log(
             "H1",
@@ -570,17 +593,50 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
                 "index": state["index"],
                 "samples": len(raw_points),
                 "finished": state["finished"],
+                "on_main_thread": QThread.currentThread() == app.thread(),
             },
         )
         # endregion
+
+        # 1) Leave the local event loop FIRST. Do not call canvas.close() here:
+        #    Wayland fullscreen close can block and was preventing exit() from
+        #    ever being reached (logs stopped after "app exit requested").
+        # region agent log
+        _agent_log(
+            "H1",
+            "calibrate_touch.py:request_app_exit",
+            "calling loop.quit",
+            {"reason": reason},
+        )
+        # endregion
+        loop.quit()
+
+        # 2) Non-blocking hide only (teardown happens after loop.exec returns).
         try:
-            canvas.close()
+            canvas.hide()
         except Exception:  # noqa: BLE001
             pass
-        QCoreApplication.exit(0)
+
+        # 3) Unblock worker I/O; join happens after the UI loop returns.
+        try:
+            touch.close()
+        except Exception:  # noqa: BLE001
+            pass
+        thread.quit()
+
+        # region agent log
+        _agent_log(
+            "H1",
+            "calibrate_touch.py:request_app_exit",
+            "loop.quit issued; returning to event loop",
+            {"reason": reason},
+        )
+        # endregion
 
     def start_capture() -> None:
         idx = state["index"]
+        if state["exit_requested"]:
+            return
         if idx >= len(TARGETS):
             state["finished"] = True
             state["message"] = "Done."
@@ -593,9 +649,9 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
                 {"index": idx, "samples": len(raw_points)},
             )
             # endregion
-            # Prefer a deterministic exit over relying on app.quit() alone.
-            QTimer.singleShot(100, lambda: request_app_exit("normal_done"))
-            # Fail-safe: never remain stuck on "Done." indefinitely.
+            # Defer quit so the current paint/timer stack can unwind.
+            QTimer.singleShot(0, lambda: request_app_exit("normal_done"))
+            # Fail-safe if the deferred quit is somehow lost.
             QTimer.singleShot(3000, lambda: request_app_exit("failsafe_after_done"))
             return
         name, _nx, _ny = TARGETS[idx]
@@ -605,7 +661,7 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
 
     def on_sample(x: float, y: float) -> None:
         idx = state["index"]
-        if idx >= len(TARGETS) or state["finished"]:
+        if idx >= len(TARGETS) or state["finished"] or state["exit_requested"]:
             # region agent log
             _agent_log(
                 "H2",
@@ -638,6 +694,8 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
         QTimer.singleShot(400, start_capture)
 
     def on_failed(msg: str) -> None:
+        if state["exit_requested"]:
+            return
         state["error"] = msg
         state["finished"] = True
         canvas.update()
@@ -649,7 +707,7 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
             {"error": msg},
         )
         # endregion
-        QTimer.singleShot(200, lambda: request_app_exit("capture_failed"))
+        QTimer.singleShot(0, lambda: request_app_exit("capture_failed"))
 
     worker.sample.connect(on_sample)
     worker.failed.connect(on_failed)
@@ -659,10 +717,10 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
         "H1",
         "calibrate_touch.py:run_ui",
         "entering app.exec",
-        {"device": device_name},
+        {"device": device_name, "loop": "QEventLoop"},
     )
     # endregion
-    app.exec()
+    loop.exec()
     state["exec_returned"] = True
     # region agent log
     _agent_log(
@@ -678,12 +736,14 @@ def run_ui(device_name: str) -> Tuple[List[Tuple[float, float]], List[Tuple[floa
     )
     # endregion
 
-    # Unblock a stuck poll_sample (H2/H3) before waiting on the worker thread.
+    # Safe to tear down the window now that the UI loop has returned.
     try:
-        touch.close()
+        canvas.hide()
+        canvas.deleteLater()
+        app.processEvents()
     except Exception:  # noqa: BLE001
         pass
-    thread.quit()
+
     if not thread.wait(2000):
         # region agent log
         _agent_log(
