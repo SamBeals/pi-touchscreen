@@ -1,8 +1,12 @@
-# Shared touch-calibration matrices for SellMate portrait provisioning.
+# Shared touch helpers for SellMate portrait provisioning.
 # Sourced by install-portrait-display.sh (optional) and tests.
 #
-# Matrices follow labwc/libinput "clockwise" tables and match the usual
-# xrandr/wlroots pairing for output transforms:
+# IMPORTANT: Generic transform→matrix tables are ONLY a temporary placeholder.
+# SellMate hardware (yldzkj USB2IIC_CTP_CONTROL) needs an empirically measured
+# matrix from calibrate_touch.py / calibrate-touch.sh. Display transform stays
+# at 270° for assembly orientation; do not infer touch from that alone.
+#
+# Placeholder matrices (libinput clockwise tables):
 #   transform 90  -> 90° CW matrix
 #   transform 270 -> 270° CW matrix
 

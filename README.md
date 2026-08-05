@@ -111,13 +111,16 @@ sudo chmod 600 /etc/sellmate/touchscreen.env
 mkdir -p ~/.local/share/sellmate-touchscreen
 
 # REQUIRED: persistent portrait desktop + touch (labwc). Do this before the app.
-# See docs/DISPLAY.md for transform 90 vs 270 and verification.
+# See docs/DISPLAY.md — transform stays 270; calibrate touch empirically.
 sudo apt-get install -y wlr-randr || true
-sudo ./provisioning/display/install-portrait-display.sh --user "$USER"
+sudo ./provisioning/display/install-portrait-display.sh --user "$USER" \
+  --touch "yldzkj USB2IIC_CTP_CONTROL"
 sudo reboot
 # After reboot, on the graphical console:
 #   ./provisioning/display/verify-portrait-display.sh
-# Expect: wlr-randr shows Transform: 90 (or 270), not normal; touch corners align.
+#   sudo -E ./provisioning/display/calibrate-touch.sh --apply
+#   sudo reboot
+# Expect: Transform: 270; measured Calibration; touch corners align.
 
 sudo cp services/sellmate-touchscreen.service /etc/systemd/system/
 sudo systemctl daemon-reload

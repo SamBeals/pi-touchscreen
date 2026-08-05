@@ -11,7 +11,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 OUTPUT="${SELLMATE_DISPLAY_OUTPUT:-HDMI-A-1}"
-TRANSFORM="${SELLMATE_DISPLAY_TRANSFORM:-90}"
+TRANSFORM="${SELLMATE_DISPLAY_TRANSFORM:-270}"
 
 if ! command -v wlr-randr >/dev/null 2>&1; then
   echo "sellmate-apply-portrait-display: wlr-randr not found" >&2

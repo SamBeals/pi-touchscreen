@@ -88,7 +88,7 @@ Reuse `/etc/sellmate/machine.env` (`MACHINE_ID`, `CLOUD_BASE`) — same file as 
 - Startup warns (`display.portrait_misconfigured`) if width > height; UI is not rearranged.
 - **Machine provisioning** (labwc): `provisioning/display/install-portrait-display.sh`
   writes `~/.config/labwc/autostart` + `rc.xml` and `/etc/sellmate/display.env` so boot
-  yields `Transform: 90|270` with matched touch — see [docs/DISPLAY.md](./docs/DISPLAY.md).
+  yields `Transform: 270` plus an empirically measured touch matrix — see [docs/DISPLAY.md](./docs/DISPLAY.md).
 - Pi launch prefers Qt Wayland (`wayland;xcb`) so Quick is not forced through Xwayland.
 
 ## Pi performance notes

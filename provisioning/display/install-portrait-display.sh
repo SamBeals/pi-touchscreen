@@ -6,10 +6,16 @@
 #   sudo ./provisioning/display/install-portrait-display.sh
 #   sudo ./provisioning/display/install-portrait-display.sh --transform 270
 #   sudo ./provisioning/display/install-portrait-display.sh \
-#        --output HDMI-A-1 --touch "Goodix Capacitive TouchScreen"
+#        --output HDMI-A-1 --touch "yldzkj USB2IIC_CTP_CONTROL" \
+#        --matrix "a b c d e f"
+#
+# Display transform defaults to 270° (SellMate assembly orientation).
+# Generic transform→matrix tables are only a temporary placeholder; run
+# calibrate-touch.sh --apply after install for a measured matrix.
 #
 # After install: log out/in or reboot, then:
 #   ./provisioning/display/verify-portrait-display.sh
+#   ./provisioning/display/calibrate-touch.sh --apply
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,13 +29,14 @@ ENV_DST="/etc/sellmate/display.env"
 UDEV_DST="/etc/udev/rules.d/99-sellmate-touch-portrait.rules"
 
 OUTPUT=""
-TRANSFORM="90"
+TRANSFORM="270"
 TOUCH_DEVICE=""
+CAL_MATRIX=""
 KIOSK_USER="${SUDO_USER:-${USER:-}}"
 RECONFIGURE=1
 
 usage() {
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -38,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --output) OUTPUT="${2:-}"; shift 2 ;;
     --transform) TRANSFORM="${2:-}"; shift 2 ;;
     --touch) TOUCH_DEVICE="${2:-}"; shift 2 ;;
+    --matrix) CAL_MATRIX="${2:-}"; shift 2 ;;
     --user) KIOSK_USER="${2:-}"; shift 2 ;;
     --no-reconfigure) RECONFIGURE=0; shift ;;
     -h|--help) usage 0 ;;
@@ -61,9 +69,13 @@ if [[ -z "$KIOSK_HOME" || ! -d "$KIOSK_HOME" ]]; then
   exit 1
 fi
 
-if ! CAL_MATRIX="$(calibration_matrix_for_transform "$TRANSFORM")"; then
-  echo "Unsupported --transform '$TRANSFORM' (use 90 or 270 for portrait)." >&2
-  exit 1
+if [[ -z "$CAL_MATRIX" ]]; then
+  if ! CAL_MATRIX="$(calibration_matrix_for_transform "$TRANSFORM")"; then
+    echo "Unsupported --transform '$TRANSFORM' (use 90 or 270 for portrait)." >&2
+    exit 1
+  fi
+  echo "Note: using generic placeholder matrix for transform $TRANSFORM."
+  echo "      Run calibrate-touch.sh --apply for yldzkj USB2IIC_CTP_CONTROL."
 fi
 
 detect_output() {
@@ -289,11 +301,11 @@ echo "  1. Reboot (required so udev + labwc both load touch calibration)."
 echo "  2. As $KIOSK_USER on the graphical console:"
 echo "       $ROOT/provisioning/display/verify-portrait-display.sh"
 echo "  3. Confirm wlr-randr shows Transform: $TRANSFORM (not normal)."
-echo "  4. Confirm libinput list-devices Calibration is NOT 'identity matrix'."
-echo "  5. Tap corners to confirm touch alignment."
-echo "  6. If the image is upside-down, re-run with --transform 270 (or 90)."
-echo "  7. If image is upright but touch axes are wrong, re-run with --transform 270"
-echo "     (swaps the paired calibration matrix) or pass --touch with the exact"
-echo "     Device: name from libinput list-devices."
+echo "  4. Keep transform at 270 for SellMate assembly orientation."
+echo "  5. Calibrate touch empirically (do not trust the generic matrix):"
+echo "       sudo -E $ROOT/provisioning/display/calibrate-touch.sh --apply"
+echo "  6. Reboot again, then tap corners to confirm alignment."
+echo "  7. If the image is upside-down (rare), re-run install with --transform 90,"
+echo "     then re-run calibrate-touch.sh --apply (matrix is independent)."
 echo
 echo "SellMate itself does not rotate the UI; keep QT_QPA_PLATFORM=wayland;xcb."
