@@ -13,8 +13,9 @@ from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from app.config import Settings
+from app.logging_setup import log_event
 from app.ui.app_controller import AppController
-from app.ui.layout import current_profile
+from app.ui.layout import current_profile, portrait_geometry_warning
 from app.ui.theme_provider import register_theme_singleton
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class QmlHost(QObject):
         super().__init__(parent)
         self.settings = settings
         self._shutting_down = False
+        self._portrait_warned = False
 
         # Basic style allows control customization (background/contentItem).
         os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
@@ -72,6 +74,55 @@ class QmlHost(QObject):
                 self.window.setWidth(width)
                 self.window.setHeight(height)
                 self.window.show()
+
+            self.window.widthChanged.connect(self._on_window_geometry_changed)
+            self.window.heightChanged.connect(self._on_window_geometry_changed)
+            self._sync_and_validate_geometry()
+
+        self._validate_primary_screen()
+
+    def _validate_primary_screen(self) -> None:
+        app = QGuiApplication.instance()
+        if app is None:
+            return
+        screen = app.primaryScreen()
+        if screen is None:
+            return
+        geo = screen.geometry()
+        self._warn_if_not_portrait(
+            geo.width(),
+            geo.height(),
+            source="primary_screen",
+        )
+
+    def _on_window_geometry_changed(self) -> None:
+        self._sync_and_validate_geometry()
+
+    def _sync_and_validate_geometry(self) -> None:
+        if not isinstance(self.window, QQuickWindow):
+            return
+        width = int(self.window.width())
+        height = int(self.window.height())
+        self.controller.setWindowGeometry(width, height)
+        self._warn_if_not_portrait(width, height, source="window")
+
+    def _warn_if_not_portrait(self, width: int, height: int, *, source: str) -> None:
+        warning = portrait_geometry_warning(width, height)
+        if not warning:
+            return
+        # One structured warning per process is enough; geometry may re-fire.
+        if self._portrait_warned:
+            return
+        self._portrait_warned = True
+        log_event(
+            logger,
+            "display.portrait_misconfigured",
+            width=width,
+            height=height,
+            source=source,
+            message=warning,
+        )
+        logger.warning("%s", warning)
 
     @Slot(str, str)
     def _on_toast(self, title: str, message: str) -> None:

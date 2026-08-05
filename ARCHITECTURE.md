@@ -3,9 +3,10 @@
 ## Role
 
 Customer-facing fullscreen kiosk on a Raspberry Pi 10.1" touchscreen,
-**permanently mounted in portrait** (dev window **800×1280**). The OS
-framebuffer and touch input are assumed already rotated; the app renders
-portrait-first layout only (no runtime landscape mode).
+**permanently mounted in portrait**. Logical Pi geometry is **≈ 600×1024**;
+Mac/dev windowed default is **800×1280**. The OS/compositor must expose that
+portrait desktop (and calibrated touch); the app never rotates the screen and
+has no landscape profile.
 
 - Talks to **SellMateCloud** for orders/payment status.
 - Reads **Firestore** inventory/planogram for product display.
@@ -25,7 +26,8 @@ Physical vend remains: Cloud → `sellmate-poller` → `vend-api`.
 | API | `app/api` | Cloud HTTP client, Firestore inventory client |
 | Models | `app/models` | Product, cart, order status mapping |
 | Config | `app/config.py` | Env + `/etc/sellmate/machine.env` + touchscreen.env |
-| Layout | `app/ui/layout.py` | Portrait metrics / browse columns |
+| Layout | `app/ui/layout.py` | Portrait-only metrics / browse columns |
+| Platform | `app/ui/platform.py` | Qt Wayland preference on Linux; Cocoa on macOS |
 | Logging | `app/logging_setup.py` | Structured JSON; no secrets |
 
 Branding is presentation-only. Checkout gates, order polling, cancel rules,
@@ -81,9 +83,11 @@ Reuse `/etc/sellmate/machine.env` (`MACHINE_ID`, `CLOUD_BASE`) — same file as 
 
 ## Display / layout
 
-- Active profile: portrait via `app/ui/layout.py` (`current_profile()`).
-- Browse columns derive from viewport width (1 column at 800px; up to 2 on wider portrait panels).
-- Landscape layout constants exist as unused stubs only.
+- Portrait-only via `app/ui/layout.py` — no landscape profile or orientation switch.
+- Browse columns derive from **actual** viewport width (≈1 column at Pi 600px; 2 at Mac 800px).
+- Startup warns (`display.portrait_misconfigured`) if width > height; UI is not rearranged.
+- Display rotation + touch calibration: [docs/DISPLAY.md](./docs/DISPLAY.md) (provisioning, not app logic).
+- Pi launch prefers Qt Wayland (`wayland;xcb`) so Quick is not forced through Xwayland.
 
 ## Pi performance notes
 
@@ -95,5 +99,6 @@ Reuse `/etc/sellmate/machine.env` (`MACHINE_ID`, `CLOUD_BASE`) — same file as 
 ## Out of scope
 
 - Hardware control, health reporting, kiosk auth, multi-language
-- OS display rotation configuration; runtime landscape UI
+- OS display rotation / touch calibration (provisioning only — see DISPLAY.md)
+- Runtime landscape UI, orientation switching, UI rotation transforms
 - Cloud theme marketplace / dashboard theme editor

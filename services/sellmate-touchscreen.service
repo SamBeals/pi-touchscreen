@@ -1,6 +1,7 @@
 [Unit]
 Description=SellMate Pi Touchscreen Kiosk
 Documentation=file:///home/sambeals/pi-touchscreen/README.md
+Documentation=file:///home/sambeals/pi-touchscreen/docs/DISPLAY.md
 After=network-online.target graphical.target
 Wants=network-online.target
 # Prefer starting once a graphical session is up (Raspberry Pi OS desktop).
@@ -19,6 +20,14 @@ EnvironmentFile=/etc/sellmate/machine.env
 EnvironmentFile=-/etc/sellmate/touchscreen.env
 
 Environment=PYTHONUNBUFFERED=1
+
+# Prefer native Wayland for Qt Quick; fall back to X11/Xwayland if needed.
+# Portrait mapping (logical ~600x1024) is an OS/compositor responsibility —
+# see docs/DISPLAY.md. Do not set QT app-level rotation here.
+Environment=QT_QPA_PLATFORM=wayland;xcb
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+# X11 fallback for sessions that still expose DISPLAY (kept after Wayland).
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/sambeals/.Xauthority
 

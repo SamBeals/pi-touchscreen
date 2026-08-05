@@ -85,7 +85,10 @@ class AppController(QObject):
         self._poll_worker: Optional[OrderPollWorker] = None
         self._closing = False
         self._detail_qty = 1
-        self._browse_viewport_width = current_profile().window_width
+        profile = current_profile()
+        self._browse_viewport_width = profile.window_width
+        self._window_width = profile.window_width
+        self._window_height = profile.window_height
         self._boot_message = "Starting SellMate…"
         self._payment_message = "Waiting for card…"
         self._result_message = ""
@@ -201,11 +204,11 @@ class AppController(QObject):
 
     @Property(int, notify=statusChanged)
     def windowWidth(self) -> int:  # noqa: N802
-        return current_profile().window_width
+        return self._window_width
 
     @Property(int, notify=statusChanged)
     def windowHeight(self) -> int:  # noqa: N802
-        return current_profile().window_height
+        return self._window_height
 
     # ----- bootstrap -----
 
@@ -370,6 +373,24 @@ class AppController(QObject):
             return
         if width != self._browse_viewport_width:
             self._browse_viewport_width = width
+            self.statusChanged.emit()
+
+    @Slot(int, int)
+    def setWindowGeometry(self, width: int, height: int) -> None:  # noqa: N802
+        """Track actual portrait window size; layout derives from these values."""
+        if width <= 0 or height <= 0:
+            return
+        changed = False
+        if width != self._window_width:
+            self._window_width = width
+            changed = True
+        if height != self._window_height:
+            self._window_height = height
+            changed = True
+        if width != self._browse_viewport_width:
+            self._browse_viewport_width = width
+            changed = True
+        if changed:
             self.statusChanged.emit()
 
     @Slot()

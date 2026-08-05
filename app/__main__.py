@@ -9,6 +9,7 @@ from PySide6.QtGui import QGuiApplication
 
 from app.config import ConfigurationError, load_settings
 from app.logging_setup import log_event, setup_logging
+from app.ui.platform import configure_qt_platform
 from app.ui.qml_host import QmlHost
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     setup_logging(settings.log_level)
+    # Before QGuiApplication so the platform plugin selection sticks.
+    configure_qt_platform()
     log_event(
         logger,
         "app.start",

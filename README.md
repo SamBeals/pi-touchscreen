@@ -1,8 +1,16 @@
 # SellMate Pi Touchscreen
 
 Fullscreen PySide6 **Qt Quick / QML** customer kiosk for a Raspberry Pi 10.1"
-touchscreen mounted in **portrait** (windowed/dev size **800×1280**). Assume
-the OS already rotates the framebuffer and touch; the app is portrait-first only.
+touchscreen **permanently mounted in portrait**.
+
+Portrait is a hardware invariant, not an app setting:
+
+- Pi logical display: **≈ 600×1024** (OS/compositor maps the native 1024×600 panel)
+- Mac/dev windowed default: **800×1280**
+- SellMate never rotates the screen or runs a landscape layout
+
+Display rotation and touch calibration are **machine provisioning** — see
+[docs/DISPLAY.md](./docs/DISPLAY.md).
 
 Browse inventory, cart, Cloud checkout + payment status polling, idle timeout,
 active-order recovery, and **configuration-driven renter themes**.
@@ -11,7 +19,8 @@ active-order recovery, and **configuration-driven renter themes**.
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md). Theme authoring: [docs/THEMES.md](./docs/THEMES.md).
+See [ARCHITECTURE.md](./ARCHITECTURE.md). Themes: [docs/THEMES.md](./docs/THEMES.md).
+Display / Wayland: [docs/DISPLAY.md](./docs/DISPLAY.md).
 
 ## Configuration
 
@@ -62,6 +71,8 @@ export THEME_ID=sellmate-default
 python -m app   # windowed portrait 800×1280 when FULLSCREEN=false
 ```
 
+macOS leaves `QT_QPA_PLATFORM` unset (Cocoa). Do not set Wayland plugins on Mac.
+
 ## Tests
 
 ```bash
@@ -106,7 +117,15 @@ systemctl status sellmate-touchscreen.service --no-pager
 journalctl -u sellmate-touchscreen.service -n 100 --no-pager
 ```
 
-Autostart assumes a graphical session on `DISPLAY=:0`. The unit runs as non-root `sambeals`, uses the repo `.venv`, and loads `/etc/sellmate/machine.env` plus optional `/etc/sellmate/touchscreen.env`.
+Autostart assumes a **portrait** graphical session. The unit prefers native
+**Wayland** (`QT_QPA_PLATFORM=wayland;xcb`) with X11 fallback, runs as non-root
+`sambeals`, uses the repo `.venv`, and loads `/etc/sellmate/machine.env` plus
+optional `/etc/sellmate/touchscreen.env`.
+
+Before enabling the service, confirm the desktop is logical portrait and touch
+aligns with the picture ([docs/DISPLAY.md](./docs/DISPLAY.md)). If width > height
+at startup, SellMate logs `display.portrait_misconfigured` and continues without
+rotating the UI.
 
 ## Active-order recovery
 
