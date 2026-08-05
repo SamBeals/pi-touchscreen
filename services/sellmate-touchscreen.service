@@ -22,8 +22,8 @@ EnvironmentFile=-/etc/sellmate/touchscreen.env
 Environment=PYTHONUNBUFFERED=1
 
 # Prefer native Wayland for Qt Quick; fall back to X11/Xwayland if needed.
-# Portrait mapping (logical ~600x1024) is an OS/compositor responsibility —
-# see docs/DISPLAY.md. Do not set QT app-level rotation here.
+# Portrait transform + touch mapping MUST already be applied by labwc
+# (provisioning/display/install-portrait-display.sh). This unit never rotates.
 Environment=QT_QPA_PLATFORM=wayland;xcb
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=/run/user/%U
@@ -33,6 +33,9 @@ Environment=XAUTHORITY=/home/sambeals/.Xauthority
 
 # Explicit venv interpreter from this repository.
 ExecStartPre=/bin/mkdir -p /home/sambeals/.local/share/sellmate-touchscreen
+# Fail fast if display provisioning was never installed (does not apply transform).
+ExecStartPre=/usr/bin/test -x /usr/local/bin/sellmate-apply-portrait-display
+ExecStartPre=/usr/bin/test -f /etc/sellmate/display.env
 ExecStart=/home/sambeals/pi-touchscreen/.venv/bin/python -m app
 
 Restart=on-failure

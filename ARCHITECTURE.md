@@ -86,7 +86,9 @@ Reuse `/etc/sellmate/machine.env` (`MACHINE_ID`, `CLOUD_BASE`) — same file as 
 - Portrait-only via `app/ui/layout.py` — no landscape profile or orientation switch.
 - Browse columns derive from **actual** viewport width (≈1 column at Pi 600px; 2 at Mac 800px).
 - Startup warns (`display.portrait_misconfigured`) if width > height; UI is not rearranged.
-- Display rotation + touch calibration: [docs/DISPLAY.md](./docs/DISPLAY.md) (provisioning, not app logic).
+- **Machine provisioning** (labwc): `provisioning/display/install-portrait-display.sh`
+  writes `~/.config/labwc/autostart` + `rc.xml` and `/etc/sellmate/display.env` so boot
+  yields `Transform: 90|270` with matched touch — see [docs/DISPLAY.md](./docs/DISPLAY.md).
 - Pi launch prefers Qt Wayland (`wayland;xcb`) so Quick is not forced through Xwayland.
 
 ## Pi performance notes

@@ -110,6 +110,15 @@ sudo chmod 600 /etc/sellmate/touchscreen.env
 # Data dir must be writable by the service user
 mkdir -p ~/.local/share/sellmate-touchscreen
 
+# REQUIRED: persistent portrait desktop + touch (labwc). Do this before the app.
+# See docs/DISPLAY.md for transform 90 vs 270 and verification.
+sudo apt-get install -y wlr-randr || true
+sudo ./provisioning/display/install-portrait-display.sh --user "$USER"
+sudo reboot
+# After reboot, on the graphical console:
+#   ./provisioning/display/verify-portrait-display.sh
+# Expect: wlr-randr shows Transform: 90 (or 270), not normal; touch corners align.
+
 sudo cp services/sellmate-touchscreen.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now sellmate-touchscreen.service
@@ -117,15 +126,11 @@ systemctl status sellmate-touchscreen.service --no-pager
 journalctl -u sellmate-touchscreen.service -n 100 --no-pager
 ```
 
-Autostart assumes a **portrait** graphical session. The unit prefers native
-**Wayland** (`QT_QPA_PLATFORM=wayland;xcb`) with X11 fallback, runs as non-root
-`sambeals`, uses the repo `.venv`, and loads `/etc/sellmate/machine.env` plus
-optional `/etc/sellmate/touchscreen.env`.
-
-Before enabling the service, confirm the desktop is logical portrait and touch
-aligns with the picture ([docs/DISPLAY.md](./docs/DISPLAY.md)). If width > height
-at startup, SellMate logs `display.portrait_misconfigured` and continues without
-rotating the UI.
+The app unit prefers native **Wayland** (`QT_QPA_PLATFORM=wayland;xcb`), runs as
+non-root `sambeals`, and loads `/etc/sellmate/machine.env` plus optional
+`/etc/sellmate/touchscreen.env`. It does **not** rotate the display — that is
+done by labwc provisioning above. If width > height at startup, SellMate logs
+`display.portrait_misconfigured` and continues without rotating the UI.
 
 ## Active-order recovery
 

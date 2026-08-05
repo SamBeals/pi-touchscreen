@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!--
+  Reference only. install-portrait-display.sh writes the live file to
+  ~/.config/labwc/rc.xml with detected output / touch / matrix values.
+-->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <!-- BEGIN SELLMATE-PORTRAIT-DISPLAY -->
+  <touch deviceName="__TOUCH_DEVICE__" mapToOutput="__OUTPUT__" mouseEmulation="no" />
+  <libinput>
+    <device category="__TOUCH_DEVICE__">
+      <calibrationMatrix>__CALIBRATION_MATRIX__</calibrationMatrix>
+    </device>
+  </libinput>
+  <!-- END SELLMATE-PORTRAIT-DISPLAY -->
+</openbox_config>
