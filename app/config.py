@@ -110,6 +110,9 @@ class Settings:
     inventory_fixture_path: Optional[str]
     theme_id: str
     theme_packages_dir: Path
+    machine_shared_token: Optional[str]
+    theme_sync_enabled: bool
+    theme_poll_seconds: float
 
     @property
     def active_order_path(self) -> Path:
@@ -156,6 +159,7 @@ def load_settings(
     theme_packages_dir = Path(
         os.environ.get("THEME_PACKAGES_DIR", "/etc/sellmate/themes")
     ).expanduser()
+    machine_token = os.environ.get("MACHINE_SHARED_TOKEN", "").strip() or None
 
     return Settings(
         machine_id=machine_id,
@@ -175,4 +179,7 @@ def load_settings(
         inventory_fixture_path=fixture,
         theme_id=theme_id,
         theme_packages_dir=theme_packages_dir,
+        machine_shared_token=machine_token,
+        theme_sync_enabled=_bool_env("THEME_SYNC_ENABLED", True),
+        theme_poll_seconds=_float_env("THEME_POLL_SECONDS", 60.0),
     )

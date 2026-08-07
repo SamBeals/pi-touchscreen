@@ -21,7 +21,7 @@
     "price": "#1F2937"
   },
   "typography": {
-    "family": "DejaVu Sans",
+    "family": "Source Sans 3",
     "scale": "comfortable"
   },
   "shape": {
@@ -48,6 +48,27 @@
       "assets/attract/boba.gif",
       "assets/attract/katsu.gif"
     ],
-    "attract_gif_interval_ms": 8000
+    "attract_gif_interval_ms": 8000,
+    "ui": {
+      "border": "#E5E7EB",
+      "image_well": "#F9FAFB",
+      "warning_surface": "#FEF3C7",
+      "warning_border": "#FDE68A",
+      "error_surface": "#FEE2E2",
+      "on_contrast": "#FFFFFF",
+      "shadow_soft": "#12000000",
+      "shadow_softer": "#08000000",
+      "shadow_lift": "#1A000000",
+      "scrim_light": "#B3FFFFFF",
+      "scrim_dark": "#99000000",
+      "square_radius": 8,
+      "status_badge_size": 88,
+      "attract_cta": "#EC4899",
+      "attract_bed": "#111111",
+      "attract_scrim_top": "#00000000",
+      "attract_scrim_mid": "#66000000",
+      "attract_scrim_bottom": "#B3000000"
+    },
+    "logo_placement": "attract_fallback"
   }
 }

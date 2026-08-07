@@ -5,7 +5,7 @@ Column {
     id: root
     property string title: "Payment"
     property string message: ""
-    spacing: Theme.sectionGap
+    spacing: Theme.gap
     width: parent ? parent.width : 400
 
     Text {
@@ -21,11 +21,12 @@ Column {
 
     Text {
         width: parent.width
-        text: root.message
+        text: root.message.length > 0 ? root.message : "Follow the terminal prompts"
         color: Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.subtitleFontPx
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
+        opacity: root.message.length > 0 ? 1 : 0.85
     }
 }

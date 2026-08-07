@@ -18,6 +18,7 @@ ButtonShape = Literal["rounded", "pill", "square"]
 ProductCardStyle = Literal["flat", "elevated", "outlined"]
 ProductImageTreatment = Literal["cover_rounded", "contain", "circle", "none"]
 BackgroundType = Literal["solid", "gradient", "image"]
+LogoPlacement = Literal["none", "attract_fallback", "header", "both"]
 
 MODES = frozenset({"light", "dark"})
 TYPE_SCALES = frozenset({"compact", "comfortable", "large"})
@@ -30,6 +31,7 @@ PRODUCT_IMAGE_TREATMENTS = frozenset(
     {"cover_rounded", "contain", "circle", "none"}
 )
 BACKGROUND_TYPES = frozenset({"solid", "gradient", "image"})
+LOGO_PLACEMENTS = frozenset({"none", "attract_fallback", "header", "both"})
 
 COLOR_KEYS = (
     "primary",
@@ -68,6 +70,47 @@ ANIMATION_MS = {
     "moderate": 280,
 }
 
+# Shared UI chrome defaults — overridable via theme.json chrome.ui
+DEFAULT_CHROME_UI: dict[str, Any] = {
+    "border": "#E5E7EB",
+    "image_well": "#F9FAFB",
+    "warning_surface": "#FEF3C7",
+    "warning_border": "#FDE68A",
+    "error_surface": "#FEE2E2",
+    "on_contrast": "#FFFFFF",
+    "shadow_soft": "#12000000",
+    "shadow_softer": "#08000000",
+    "shadow_lift": "#1A000000",
+    "scrim_light": "#B3FFFFFF",
+    "scrim_dark": "#99000000",
+    "square_radius": 8,
+    "status_badge_size": 88,
+    "attract_cta": "#EC4899",
+    "attract_bed": "#111111",
+    "attract_scrim_top": "#00000000",
+    "attract_scrim_mid": "#66000000",
+    "attract_scrim_bottom": "#B3000000",
+}
+
+CHROME_UI_COLOR_KEYS = (
+    "border",
+    "image_well",
+    "warning_surface",
+    "warning_border",
+    "error_surface",
+    "on_contrast",
+    "shadow_soft",
+    "shadow_softer",
+    "shadow_lift",
+    "scrim_light",
+    "scrim_dark",
+    "attract_cta",
+    "attract_bed",
+    "attract_scrim_top",
+    "attract_scrim_mid",
+    "attract_scrim_bottom",
+)
+
 
 @dataclass(frozen=True)
 class BackgroundSpec:
@@ -75,6 +118,30 @@ class BackgroundSpec:
     color: str = "#111827"
     stops: tuple[str, ...] = ("#111827", "#0F172A")
     image: str = ""
+
+
+@dataclass(frozen=True)
+class ChromeUi:
+    """Non-renter-brand chrome shared by QML components."""
+
+    border: str = "#E5E7EB"
+    image_well: str = "#F9FAFB"
+    warning_surface: str = "#FEF3C7"
+    warning_border: str = "#FDE68A"
+    error_surface: str = "#FEE2E2"
+    on_contrast: str = "#FFFFFF"
+    shadow_soft: str = "#12000000"
+    shadow_softer: str = "#08000000"
+    shadow_lift: str = "#1A000000"
+    scrim_light: str = "#B3FFFFFF"
+    scrim_dark: str = "#99000000"
+    square_radius: int = 8
+    status_badge_size: int = 88
+    attract_cta: str = "#EC4899"
+    attract_bed: str = "#111111"
+    attract_scrim_top: str = "#00000000"
+    attract_scrim_mid: str = "#66000000"
+    attract_scrim_bottom: str = "#B3000000"
 
 
 @dataclass(frozen=True)
@@ -95,12 +162,14 @@ class ResolvedTheme:
     spacing_density: SpacingDensity
     animation_intensity: AnimationIntensity
     background: BackgroundSpec
+    chrome_ui: ChromeUi
     attract_headline: str
     attract_promo: str
     attract_gif_paths: tuple[str, ...]
     attract_gif_interval_ms: int
     banner_path: str
     product_image_treatment: ProductImageTreatment
+    logo_placement: LogoPlacement
     package_dir: str
     used_fallback: bool = False
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -197,10 +266,12 @@ class ResolvedTheme:
             ],
             "attractGifIntervalMs": self.attract_gif_interval_ms,
             "productImageTreatment": self.product_image_treatment,
+            "logoPlacement": self.logo_placement,
             "backgroundType": bg["type"],
             "backgroundColor": bg["color"],
             "backgroundStops": list(bg["stops"]),
             "backgroundImageUrl": self.asset_url(bg["image"]) if bg["image"] else "",
+            "chromeUi": asdict(self.chrome_ui),
             "usedFallback": self.used_fallback,
         }
 
@@ -225,7 +296,7 @@ def default_theme_dict() -> dict[str, Any]:
             "error": "#DC2626",
             "price": "#1F2937",
         },
-        "typography": {"family": "DejaVu Sans", "scale": "comfortable"},
+        "typography": {"family": "Source Sans 3", "scale": "comfortable"},
         "shape": {
             "corner_radius": 20,
             "button_style": "filled",
@@ -252,5 +323,7 @@ def default_theme_dict() -> dict[str, Any]:
                 "assets/attract/katsu.gif",
             ],
             "attract_gif_interval_ms": 8000,
+            "logo_placement": "attract_fallback",
+            "ui": dict(DEFAULT_CHROME_UI),
         },
     }

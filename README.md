@@ -21,6 +21,7 @@ active-order recovery, and **configuration-driven renter themes**.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md). Themes: [docs/THEMES.md](./docs/THEMES.md).
 Display / Wayland: [docs/DISPLAY.md](./docs/DISPLAY.md).
+Figma / Figma to Qt design loop: [docs/FIGMA.md](./docs/FIGMA.md).
 
 ## Configuration
 
@@ -71,7 +72,13 @@ export THEME_ID=sellmate-default
 python -m app   # windowed portrait 800×1280 when FULLSCREEN=false
 ```
 
+Windowed Mac/dev runs enable **QML hot reload** by default (watches
+`app/ui/qml/` + the active theme package). Disable with `QML_HOT_RELOAD=0`.
+
 macOS leaves `QT_QPA_PLATFORM` unset (Cocoa). Do not set Wayland plugins on Mac.
+
+Design iteration: mock portrait frames in Figma with **Figma to Qt**, then port
+tokens/layout into `themes/*/theme.json` and QML — see [docs/FIGMA.md](./docs/FIGMA.md).
 
 ## Tests
 

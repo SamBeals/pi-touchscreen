@@ -30,21 +30,26 @@ Item {
     // --- Full-bleed GIF idle layer ---
     Rectangle {
         anchors.fill: parent
-        color: "#111111"
+        color: Theme.attractBed
         visible: root.hasGifs
     }
 
+    // Only mount the current (+ previous for crossfade) GIF to limit Pi decode cost.
     Repeater {
         model: root.hasGifs ? root.gifUrls.length : 0
         delegate: AnimatedImage {
             required property int index
             anchors.fill: parent
-            source: root.gifUrls[index]
+            source: (root.active && (index === root.gifIndex || index === ((root.gifIndex - 1 + root.gifUrls.length) % root.gifUrls.length)))
+                    ? root.gifUrls[index]
+                    : ""
             fillMode: Image.PreserveAspectCrop
-            opacity: index === root.gifIndex ? 1 : 0
+            opacity: (root.active && index === root.gifIndex) ? 1 : 0
             playing: root.active && index === root.gifIndex
-            cache: true
+            // Avoid keeping decoded frames warm when off-screen / inactive.
+            cache: false
             asynchronous: true
+            visible: root.active && source.length > 0 && opacity > 0.01
             z: 0
 
             Behavior on opacity {
@@ -58,17 +63,35 @@ Item {
 
     // Soft bottom scrim so the pink CTA stays readable over any GIF.
     Rectangle {
-        visible: root.hasGifs
+        visible: root.hasGifs && root.active
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: parent.height * 0.42
         z: 1
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#00000000" }
-            GradientStop { position: 0.45; color: "#66000000" }
-            GradientStop { position: 1.0; color: "#B3000000" }
+            GradientStop { position: 0.0; color: Theme.attractScrimTop }
+            GradientStop { position: 0.45; color: Theme.attractScrimMid }
+            GradientStop { position: 1.0; color: Theme.attractScrimBottom }
         }
+    }
+
+    // Logo over GIF media (rigid top-center placement).
+    Image {
+        visible: root.hasGifs
+                 && root.active
+                 && Theme.logoUrl.length > 0
+                 && (Theme.logoPlacement === "attract_fallback"
+                     || Theme.logoPlacement === "both")
+        source: Theme.logoUrl
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: Theme.pageMargin + 8
+        width: parent.width * 0.45
+        height: 72
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        z: 3
     }
 
     Timer {
@@ -83,7 +106,7 @@ Item {
     MouseArea {
         anchors.fill: parent
         z: 2
-        enabled: root.hasGifs
+        enabled: root.hasGifs && root.active
         onClicked: App.enterBrowse()
     }
 
@@ -102,6 +125,8 @@ Item {
 
         Image {
             visible: Theme.logoUrl.length > 0
+                     && (Theme.logoPlacement === "attract_fallback"
+                         || Theme.logoPlacement === "both")
             source: Theme.logoUrl
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: 88
@@ -149,7 +174,7 @@ Item {
 
     // Pink CTA layered above the GIF plane.
     PrimaryButton {
-        visible: root.hasGifs
+        visible: root.hasGifs && root.active
         text: "Start shopping"
         pink: true
         z: 10
@@ -165,7 +190,7 @@ Item {
     MouseArea {
         anchors.fill: parent
         z: -1
-        enabled: !root.hasGifs
+        enabled: !root.hasGifs && root.active
         onClicked: App.enterBrowse()
     }
 }

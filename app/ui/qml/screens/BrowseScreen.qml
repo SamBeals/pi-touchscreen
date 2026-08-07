@@ -10,7 +10,6 @@ ColumnLayout {
     AppHeader {
         showBrand: true
         showCart: true
-        title: ""
         Layout.fillWidth: true
     }
 

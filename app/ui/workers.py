@@ -119,3 +119,49 @@ class ResumeOrderWorker(QThread):
             self.finished_ok.emit(self._service.resume_if_needed())
         except Exception as exc:  # noqa: BLE001
             self.finished_err.emit(str(exc) or type(exc).__name__)
+
+
+class ThemeSyncWorker(QThread):
+    """Poll Cloud for a desired theme and install when Attract-idle."""
+
+    finished_ok = Signal(object)  # Optional ActiveThemePointer / truthy if applied
+    finished_err = Signal(str)
+
+    def __init__(
+        self,
+        cloud: CloudClient,
+        *,
+        machine_token: str,
+        data_dir,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._cloud = cloud
+        self._token = machine_token
+        self._data_dir = data_dir
+
+    def run(self) -> None:
+        from app.theme.cloud_sync import ack_theme_failed, sync_desired_theme
+
+        try:
+            pointer = sync_desired_theme(
+                cloud_client=self._cloud,
+                machine_token=self._token,
+                data_dir=self._data_dir,
+            )
+            self.finished_ok.emit(pointer)
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc) or type(exc).__name__
+            try:
+                status = self._cloud.get_machine_theme(machine_token=self._token)
+                desired = status.get("desired_theme") or {}
+                if desired:
+                    ack_theme_failed(
+                        cloud_client=self._cloud,
+                        machine_token=self._token,
+                        desired=desired,
+                        error=message,
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+            self.finished_err.emit(message)

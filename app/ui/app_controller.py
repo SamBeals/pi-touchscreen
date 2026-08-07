@@ -28,6 +28,7 @@ from app.ui.workers import (
     InventoryLoadWorker,
     OrderPollWorker,
     ResumeOrderWorker,
+    ThemeSyncWorker,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,9 +53,16 @@ class AppController(QObject):
         self.catalog: Dict[str, Product] = {}
         self.snapshot: Optional[InventorySnapshot] = None
 
+        from app.theme.cloud_sync import resolve_boot_theme
+
+        boot_theme_id, boot_packages_dir = resolve_boot_theme(
+            data_dir=settings.data_dir,
+            fallback_theme_id=settings.theme_id,
+            fallback_packages_dir=settings.theme_packages_dir,
+        )
         self._theme_bridge = create_theme_bridge(
-            theme_id=settings.theme_id,
-            packages_dir=settings.theme_packages_dir,
+            theme_id=boot_theme_id,
+            packages_dir=boot_packages_dir,
             parent=self,
         )
 
@@ -62,7 +70,7 @@ class AppController(QObject):
         self.cart_model = CartModel(self)
         self.cart_model.bind_cart(self.cart)
 
-        self.cloud = CloudClient(settings.cloud_base)
+        self.cloud = CloudClient(settings.cloud_base, machine_id=settings.machine_id)
         self.inventory_client = InventoryClient(
             machine_id=settings.machine_id,
             cache_path=settings.inventory_cache_path,
@@ -103,6 +111,11 @@ class AppController(QObject):
             int(settings.inventory_idle_refresh_seconds * 1000)
         )
         self.inventory_timer.timeout.connect(self._refresh_inventory_idle)
+
+        self.theme_timer = QTimer(self)
+        self.theme_timer.setInterval(int(max(15.0, settings.theme_poll_seconds) * 1000))
+        self.theme_timer.timeout.connect(self._refresh_theme_idle)
+        self._theme_sync_running = False
 
         QTimer.singleShot(0, self._bootstrap)
 
@@ -295,6 +308,7 @@ class AppController(QObject):
                 self.fsm.boot_ok()
                 self._show_screen(AppScreen.ATTRACT)
                 self.inventory_timer.start()
+                self.theme_timer.start()
                 self._bump_idle()
 
         def err(msg: str) -> None:
@@ -304,6 +318,7 @@ class AppController(QObject):
             self.fsm.boot_ok()
             self._show_screen(AppScreen.ATTRACT)
             self.inventory_timer.start()
+            self.theme_timer.start()
 
         worker.finished_ok.connect(ok)
         worker.finished_err.connect(err)
@@ -349,6 +364,50 @@ class AppController(QObject):
 
             health.finished_ok.connect(apply)
             health.start()
+            self._refresh_theme_idle()
+
+    def _refresh_theme_idle(self) -> None:
+        if not self.settings.theme_sync_enabled:
+            return
+        if not self.settings.machine_shared_token:
+            return
+        if self.fsm.screen != AppScreen.ATTRACT:
+            return
+        if self.fsm.active_order_id:
+            return
+        if self._theme_sync_running:
+            return
+
+        self._theme_sync_running = True
+        worker = ThemeSyncWorker(
+            self.cloud,
+            machine_token=self.settings.machine_shared_token,
+            data_dir=self.settings.data_dir,
+        )
+        self._track(worker)
+
+        def on_ok(pointer) -> None:
+            self._theme_sync_running = False
+            if not pointer:
+                return
+            log_event(
+                logger,
+                "theme.restart_for_apply",
+                theme_id=getattr(pointer, "theme_id", None),
+                revision=getattr(pointer, "revision", None),
+            )
+            # Exit non-zero so systemd Restart=on-failure reloads fonts/QML cleanly.
+            from PySide6.QtCore import QCoreApplication
+
+            QCoreApplication.exit(1)
+
+        def on_err(message: str) -> None:
+            self._theme_sync_running = False
+            log_event(logger, "theme.sync_failed", error=message)
+
+        worker.finished_ok.connect(on_ok)
+        worker.finished_err.connect(on_err)
+        worker.start()
 
     def _set_payment_message(self, text: str) -> None:
         self._payment_message = text
@@ -580,12 +639,14 @@ class AppController(QObject):
         self.cartChanged.emit()
         self._show_screen(AppScreen.ATTRACT)
         self.inventory_timer.start()
+        self.theme_timer.start()
 
     @Slot()
     def shutdown(self) -> None:
         self._closing = True
         self.idle_timer.stop()
         self.inventory_timer.stop()
+        self.theme_timer.stop()
         self._stop_polling()
         for worker in list(self._workers):
             if hasattr(worker, "request_stop"):

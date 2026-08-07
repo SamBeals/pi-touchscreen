@@ -21,7 +21,7 @@ ColumnLayout {
 
         Item {
             anchors.fill: parent
-            anchors.margins: 12
+            anchors.margins: 14
 
             Rectangle {
                 anchors.fill: parent
@@ -31,7 +31,7 @@ ColumnLayout {
 
                 Image {
                     anchors.fill: parent
-                    anchors.margins: 12
+                    anchors.margins: 14
                     source: App.detailImageUrl
                     fillMode: Theme.productImageTreatment === "cover_rounded"
                                ? Image.PreserveAspectCrop
@@ -46,7 +46,7 @@ ColumnLayout {
                     text: App.detailSlotId
                     color: Theme.primary
                     font.family: Theme.fontFamily
-                    font.pixelSize: 56
+                    font.pixelSize: Theme.titleFontPx + 8
                     font.bold: true
                 }
             }
@@ -57,7 +57,7 @@ ColumnLayout {
         text: App.detailName
         color: Theme.text
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.titleFontPx - 4
+        font.pixelSize: Theme.titleFontPx - 2
         font.bold: true
         wrapMode: Text.WordWrap
         Layout.fillWidth: true

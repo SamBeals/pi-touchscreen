@@ -27,6 +27,10 @@ class TestThemeLoader(unittest.TestCase):
         self.assertGreaterEqual(result.theme.card_min_height, CARD_MIN_HEIGHT)
         self.assertEqual(len(result.theme.attract_gif_paths), 3)
         self.assertGreaterEqual(result.theme.attract_gif_interval_ms, 2000)
+        self.assertEqual(result.theme.font_family, "Source Sans 3")
+        self.assertEqual(result.theme.chrome_ui.attract_cta, "#EC4899")
+        self.assertEqual(result.theme.chrome_ui.attract_bed, "#111111")
+        self.assertGreaterEqual(result.theme.chrome_ui.status_badge_size, 72)
         urls = [
             result.theme.asset_url(p) for p in result.theme.attract_gif_paths
         ]

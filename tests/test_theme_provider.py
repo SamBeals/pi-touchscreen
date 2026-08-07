@@ -42,6 +42,9 @@ class TestThemeProvider(unittest.TestCase):
         self.assertTrue(bridge.border)
         self.assertTrue(bridge.imageWell)
         self.assertEqual(bridge.squareRadius, 8)
+        self.assertEqual(bridge.attractCta, "#EC4899")
+        self.assertEqual(bridge.attractBed, "#111111")
+        self.assertGreaterEqual(bridge.statusBadgeSize, 72)
 
     def test_create_theme_bridge_missing_package(self):
         bridge = create_theme_bridge(

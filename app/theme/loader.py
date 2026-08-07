@@ -16,8 +16,11 @@ from app.theme.schema import (
     BACKGROUND_TYPES,
     BUTTON_SHAPES,
     BUTTON_STYLES,
+    CHROME_UI_COLOR_KEYS,
     COLOR_KEYS,
+    DEFAULT_CHROME_UI,
     DEFAULT_THEME_ID,
+    LOGO_PLACEMENTS,
     MODES,
     PRODUCT_CARD_STYLES,
     PRODUCT_IMAGE_TREATMENTS,
@@ -25,6 +28,7 @@ from app.theme.schema import (
     SPACING_DENSITIES,
     TYPE_SCALES,
     BackgroundSpec,
+    ChromeUi,
     ResolvedTheme,
     default_theme_dict,
 )
@@ -210,6 +214,13 @@ def _resolve_from_dict(
         warnings,
         "chrome.product_image_treatment",
     )
+    logo_placement = _enum(
+        chrome.get("logo_placement"),
+        LOGO_PLACEMENTS,
+        "attract_fallback",
+        warnings,
+        "chrome.logo_placement",
+    )
 
     radius_raw = shape.get("corner_radius", 16)
     try:
@@ -308,6 +319,46 @@ def _resolve_from_dict(
     if not isinstance(display_name, str) or not display_name.strip():
         display_name = business_name
 
+    ui_in = chrome.get("ui") if isinstance(chrome.get("ui"), dict) else {}
+    ui_defaults = defaults.get("chrome", {}).get("ui") or DEFAULT_CHROME_UI
+    ui_colors: dict[str, str] = {}
+    for key in CHROME_UI_COLOR_KEYS:
+        ui_colors[key] = _color(
+            ui_in.get(key),
+            ui_defaults.get(key, DEFAULT_CHROME_UI[key]),
+            warnings,
+            f"chrome.ui.{key}",
+        )
+
+    def _ui_int(key: str, lo: int, hi: int) -> int:
+        raw = ui_in.get(key, ui_defaults.get(key, DEFAULT_CHROME_UI[key]))
+        try:
+            return max(lo, min(hi, int(raw)))
+        except (TypeError, ValueError):
+            warnings.append(f"chrome.ui.{key} invalid: {raw!r}")
+            return int(DEFAULT_CHROME_UI[key])
+
+    chrome_ui = ChromeUi(
+        border=ui_colors["border"],
+        image_well=ui_colors["image_well"],
+        warning_surface=ui_colors["warning_surface"],
+        warning_border=ui_colors["warning_border"],
+        error_surface=ui_colors["error_surface"],
+        on_contrast=ui_colors["on_contrast"],
+        shadow_soft=ui_colors["shadow_soft"],
+        shadow_softer=ui_colors["shadow_softer"],
+        shadow_lift=ui_colors["shadow_lift"],
+        scrim_light=ui_colors["scrim_light"],
+        scrim_dark=ui_colors["scrim_dark"],
+        square_radius=_ui_int("square_radius", 0, 24),
+        status_badge_size=_ui_int("status_badge_size", 48, 160),
+        attract_cta=ui_colors["attract_cta"],
+        attract_bed=ui_colors["attract_bed"],
+        attract_scrim_top=ui_colors["attract_scrim_top"],
+        attract_scrim_mid=ui_colors["attract_scrim_mid"],
+        attract_scrim_bottom=ui_colors["attract_scrim_bottom"],
+    )
+
     return ResolvedTheme(
         schema_version=SCHEMA_VERSION,
         id=str(theme_id).strip(),
@@ -330,12 +381,14 @@ def _resolve_from_dict(
             stops=tuple(stops),
             image=bg_image,
         ),
+        chrome_ui=chrome_ui,
         attract_headline=headline.strip(),
         attract_promo=promo.strip(),
         attract_gif_paths=tuple(attract_gif_paths),
         attract_gif_interval_ms=attract_gif_interval_ms,
         banner_path=banner,
         product_image_treatment=image_treatment,  # type: ignore[arg-type]
+        logo_placement=logo_placement,  # type: ignore[arg-type]
         package_dir=str(package_dir.resolve()),
         used_fallback=used_fallback,
         warnings=tuple(warnings),

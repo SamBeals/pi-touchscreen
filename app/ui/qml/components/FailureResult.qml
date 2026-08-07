@@ -3,25 +3,40 @@ import QtQuick.Layouts
 import SellMate 1.0
 
 ColumnLayout {
+    id: root
     property string message: ""
     spacing: Theme.sectionGap
     anchors.fill: parent
 
+    readonly property bool active: App.screen === "failure"
+
     Item { Layout.fillHeight: true }
 
-    Rectangle {
+    Item {
         Layout.alignment: Qt.AlignHCenter
         width: Theme.statusBadgeSize
         height: Theme.statusBadgeSize
-        radius: Theme.statusBadgeSize / 2
-        color: Theme.errorSurface
 
-        Text {
-            anchors.centerIn: parent
-            text: "!"
-            color: Theme.error
-            font.pixelSize: Theme.statusBadgeSize / 2
-            font.bold: true
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: Theme.errorSurface
+            scale: root.active ? 1 : 0.85
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Math.max(140, Theme.animationMs)
+                    easing.type: Easing.OutCubic
+                }
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "!"
+                color: Theme.error
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.statusBadgeSize * 0.48
+                font.bold: true
+            }
         }
     }
 

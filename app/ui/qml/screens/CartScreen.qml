@@ -39,21 +39,22 @@ ColumnLayout {
 
     ElevatedCard {
         Layout.fillWidth: true
-        implicitHeight: totalCol.implicitHeight + 28
+        implicitHeight: totalCol.implicitHeight + 36
 
         ColumnLayout {
             id: totalCol
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.margins: 18
-            spacing: 4
+            anchors.margins: 20
+            spacing: 6
 
             Text {
                 text: "Total"
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodyFontPx
+                font.bold: true
             }
 
             PriceDisplay {

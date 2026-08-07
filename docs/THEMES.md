@@ -14,7 +14,7 @@ Renter branding is configuration-driven. Install a theme package and set
     banner-attract.png
     product-placeholder.png
     fonts/
-      BrandSans-Regular.ttf
+      BrandSans-Regular.ttf   # or .otf — registered on load
 ```
 
 Bundled themes ship in the repo under `themes/`:
@@ -23,6 +23,14 @@ Bundled themes ship in the repo under `themes/`:
 |---|---|
 | `sellmate-default` | Premium white / lime retail brand (default) |
 | `sellmate-light` | Alternate light theme (spacious density) |
+
+Fonts under `assets/fonts/*.{ttf,otf,ttc}` are registered via Qt’s font
+database when the theme loads (`app/theme/fonts.py`). Set
+`typography.family` to the PostScript/family name (bundled default:
+**Source Sans 3**).
+
+Shared chrome (borders, shadows, attract CTA/scrim) lives in
+`chrome.ui` inside `theme.json` — see bundled packages for the full key set.
 
 ## Selection
 
@@ -38,6 +46,27 @@ Restart the service after changing themes:
 ```bash
 sudo systemctl restart sellmate-touchscreen
 ```
+
+### Cloud apply (MVP)
+
+Theme Studio can **Publish & apply** a zip to a specific `machine_id`. Cloud
+stores an immutable package and sets `machines/{id}.desired_theme`. While the
+kiosk is on **Attract**, touchscreen polls Cloud (`THEME_SYNC_ENABLED`, default
+on), downloads the zip with `X-Machine-Token`, installs under:
+
+```text
+$TOUCHSCREEN_DATA_DIR/themes/<theme_id>/
+$TOUCHSCREEN_DATA_DIR/active_theme.json
+```
+
+Then acks and exits non-zero so systemd `Restart=on-failure` reloads the UI.
+Boot prefers `active_theme.json` when that package exists on disk; otherwise
+falls back to `THEME_ID` / `THEME_PACKAGES_DIR`.
+
+Requires `MACHINE_SHARED_TOKEN` in `/etc/sellmate/machine.env` (same as health).
+
+On Mac/dev (`FULLSCREEN=false`), QML/theme file changes hot-reload by default
+(`QML_HOT_RELOAD=1`). Set `QML_HOT_RELOAD=0` to disable.
 
 ## Validation and fallback
 
