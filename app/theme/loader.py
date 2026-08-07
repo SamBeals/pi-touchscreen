@@ -265,6 +265,41 @@ def _resolve_from_dict(
     if not isinstance(promo, str):
         promo = ""
 
+    attract_gifs_raw = chrome.get("attract_gifs")
+    gifs_from_defaults = attract_gifs_raw is None
+    if gifs_from_defaults:
+        attract_gifs_raw = defaults["chrome"].get("attract_gifs") or []
+    attract_gif_paths: list[str] = []
+    if isinstance(attract_gifs_raw, list):
+        bundled_pkg = bundled_themes_dir() / DEFAULT_THEME_ID
+        for i, entry in enumerate(attract_gifs_raw):
+            field = f"chrome.attract_gifs[{i}]"
+            # Prefer assets inside the active package; fall back to bundled default.
+            warn_bucket: list[str] = [] if gifs_from_defaults else warnings
+            rel = _asset_rel(package_dir, entry, warn_bucket, field)
+            if rel:
+                attract_gif_paths.append(rel)
+                continue
+            bundled_rel = _asset_rel(bundled_pkg, entry, [], field)
+            if bundled_rel:
+                attract_gif_paths.append(str((bundled_pkg / bundled_rel).resolve()))
+            elif not gifs_from_defaults:
+                warnings.append(f"{field}: missing asset {entry!r}")
+    elif attract_gifs_raw:
+        warnings.append("chrome.attract_gifs must be a list of asset paths")
+
+    interval_raw = chrome.get("attract_gif_interval_ms")
+    if interval_raw is None:
+        interval_raw = defaults["chrome"].get("attract_gif_interval_ms", 8000)
+    try:
+        attract_gif_interval_ms = int(interval_raw)
+        if attract_gif_interval_ms < 2000:
+            attract_gif_interval_ms = 2000
+            warnings.append("chrome.attract_gif_interval_ms too small; using 2000")
+    except (TypeError, ValueError):
+        attract_gif_interval_ms = 8000
+        warnings.append("chrome.attract_gif_interval_ms invalid; using 8000")
+
     theme_id = merged.get("id") or package_dir.name
     if not isinstance(theme_id, str) or not theme_id.strip():
         theme_id = DEFAULT_THEME_ID
@@ -297,6 +332,8 @@ def _resolve_from_dict(
         ),
         attract_headline=headline.strip(),
         attract_promo=promo.strip(),
+        attract_gif_paths=tuple(attract_gif_paths),
+        attract_gif_interval_ms=attract_gif_interval_ms,
         banner_path=banner,
         product_image_treatment=image_treatment,  # type: ignore[arg-type]
         package_dir=str(package_dir.resolve()),

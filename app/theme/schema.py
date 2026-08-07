@@ -97,6 +97,8 @@ class ResolvedTheme:
     background: BackgroundSpec
     attract_headline: str
     attract_promo: str
+    attract_gif_paths: tuple[str, ...]
+    attract_gif_interval_ms: int
     banner_path: str
     product_image_treatment: ProductImageTreatment
     package_dir: str
@@ -190,6 +192,10 @@ class ResolvedTheme:
             "cardMinHeight": self.card_min_height,
             "attractHeadline": self.attract_headline,
             "attractPromo": self.attract_promo,
+            "attractGifUrls": [
+                self.asset_url(p) for p in self.attract_gif_paths if self.asset_url(p)
+            ],
+            "attractGifIntervalMs": self.attract_gif_interval_ms,
             "productImageTreatment": self.product_image_treatment,
             "backgroundType": bg["type"],
             "backgroundColor": bg["color"],
@@ -240,5 +246,11 @@ def default_theme_dict() -> dict[str, Any]:
             "attract_promo": "",
             "banner": "",
             "product_image_treatment": "contain",
+            "attract_gifs": [
+                "assets/attract/pepper.gif",
+                "assets/attract/boba.gif",
+                "assets/attract/katsu.gif",
+            ],
+            "attract_gif_interval_ms": 8000,
         },
     }

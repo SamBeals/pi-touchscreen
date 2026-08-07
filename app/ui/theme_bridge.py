@@ -32,6 +32,8 @@ _CHROME = {
     "scrim_dark": "#99000000",
     "square_radius": 8,
     "status_badge_size": 72,
+    # Attract CTA over full-bleed GIFs (white label).
+    "attract_cta": "#EC4899",
 }
 
 
@@ -246,6 +248,23 @@ class ThemeBridge(QObject):
     @Property(str, notify=changed)
     def attractPromo(self) -> str:  # noqa: N802
         return self._t().attract_promo
+
+    @Property(list, notify=changed)
+    def attractGifUrls(self):  # noqa: N802
+        urls = []
+        for rel in self._t().attract_gif_paths:
+            url = self._t().asset_url(rel)
+            if url:
+                urls.append(url)
+        return urls
+
+    @Property(int, notify=changed)
+    def attractGifIntervalMs(self) -> int:  # noqa: N802
+        return int(self._t().attract_gif_interval_ms)
+
+    @Property(str, notify=changed)
+    def attractCta(self) -> str:  # noqa: N802
+        return _CHROME["attract_cta"]
 
     @Property(str, notify=changed)
     def backgroundType(self) -> str:  # noqa: N802

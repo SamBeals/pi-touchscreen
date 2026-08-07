@@ -42,6 +42,12 @@
     "attract_headline": "Tap to start shopping",
     "attract_promo": "",
     "banner": "",
-    "product_image_treatment": "contain"
+    "product_image_treatment": "contain",
+    "attract_gifs": [
+      "assets/attract/pepper.gif",
+      "assets/attract/boba.gif",
+      "assets/attract/katsu.gif"
+    ],
+    "attract_gif_interval_ms": 8000
   }
 }

@@ -25,6 +25,12 @@ class TestThemeLoader(unittest.TestCase):
             result.theme.secondary_button_min_height, SECONDARY_BUTTON_MIN_HEIGHT
         )
         self.assertGreaterEqual(result.theme.card_min_height, CARD_MIN_HEIGHT)
+        self.assertEqual(len(result.theme.attract_gif_paths), 3)
+        self.assertGreaterEqual(result.theme.attract_gif_interval_ms, 2000)
+        urls = [
+            result.theme.asset_url(p) for p in result.theme.attract_gif_paths
+        ]
+        self.assertTrue(all(urls))
 
     def test_missing_theme_falls_back_to_default(self):
         result = load_theme("does-not-exist", packages_dir="/nonexistent")

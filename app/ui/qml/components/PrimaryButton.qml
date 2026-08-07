@@ -7,6 +7,7 @@ Button {
     property bool danger: false
     property bool success: false
     property bool secondary: false
+    property bool pink: false
 
     font.family: Theme.fontFamily
     font.pixelSize: Theme.bodyFontPx + 2
@@ -33,7 +34,9 @@ Button {
                 return _fill()
             }
             border.width: Theme.buttonStyle === "outline" || root.secondary ? 1 : 0
-            border.color: root.danger ? Theme.error : (root.secondary ? Theme.border : Theme.primary)
+            border.color: root.danger ? Theme.error
+                        : root.pink ? Theme.attractCta
+                        : (root.secondary ? Theme.border : Theme.primary)
 
             // Soft lift for primary filled buttons
             Rectangle {
@@ -60,6 +63,7 @@ Button {
     function _fill() {
         if (root.danger) return Theme.error
         if (root.success) return Theme.success
+        if (root.pink) return Theme.attractCta
         if (root.secondary) return Theme.secondary
         if (Theme.buttonStyle === "outline") return "transparent"
         if (Theme.buttonStyle === "soft") return Theme.secondary
@@ -68,6 +72,7 @@ Button {
 
     function _labelColor() {
         if (!root.enabled) return Theme.textMuted
+        if (root.pink) return Theme.onContrast
         if (Theme.buttonStyle === "outline")
             return root.danger ? Theme.error : Theme.text
         if (root.secondary) return Theme.text
