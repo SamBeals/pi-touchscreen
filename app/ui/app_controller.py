@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
@@ -29,6 +30,7 @@ from app.ui.workers import (
     OrderPollWorker,
     ResumeOrderWorker,
     ThemeSyncWorker,
+    WaitTimeoutCancelWorker,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,6 +103,11 @@ class AppController(QObject):
         self._payment_message = "Waiting for card…"
         self._result_message = ""
         self._user_notice = ""
+        self._vend_wait_total = max(1.0, float(settings.vend_wait_seconds))
+        self._vend_wait_deadline: Optional[float] = None
+        self._vend_wait_seconds_remaining = 0
+        self._vend_wait_active = False
+        self._wait_timeout_cancel_in_flight = False
 
         self.idle_timer = QTimer(self)
         self.idle_timer.setInterval(int(settings.idle_timeout_seconds * 1000))
@@ -116,6 +123,10 @@ class AppController(QObject):
         self.theme_timer.setInterval(int(max(15.0, settings.theme_poll_seconds) * 1000))
         self.theme_timer.timeout.connect(self._refresh_theme_idle)
         self._theme_sync_running = False
+
+        self.vend_wait_timer = QTimer(self)
+        self.vend_wait_timer.setInterval(250)
+        self.vend_wait_timer.timeout.connect(self._on_vend_wait_tick)
 
         QTimer.singleShot(0, self._bootstrap)
 
@@ -176,6 +187,24 @@ class AppController(QObject):
     @Property(bool, notify=statusChanged)
     def cancelEnabled(self) -> bool:  # noqa: N802
         return self.fsm.cancel_allowed()
+
+    @Property(bool, notify=statusChanged)
+    def vendWaitActive(self) -> bool:  # noqa: N802
+        return self._vend_wait_active
+
+    @Property(int, notify=statusChanged)
+    def vendWaitSecondsRemaining(self) -> int:  # noqa: N802
+        return int(self._vend_wait_seconds_remaining)
+
+    @Property(float, notify=statusChanged)
+    def vendWaitProgress(self) -> float:  # noqa: N802
+        """Fraction of wait remaining (1.0 = just started, 0.0 = expired)."""
+        if self._vend_wait_total <= 0:
+            return 0.0
+        return max(
+            0.0,
+            min(1.0, self._vend_wait_seconds_remaining / self._vend_wait_total),
+        )
 
     @Property(str, notify=statusChanged)
     def resultMessage(self) -> str:  # noqa: N802
@@ -344,12 +373,8 @@ class AppController(QObject):
         if self.fsm.screen in {AppScreen.PAYMENT, AppScreen.BOOT, AppScreen.FATAL}:
             return
         log_event(logger, "app.idle_timeout", screen=self.fsm.screen.value)
-        self.cart.clear()
-        self.cart_model.refresh()
-        self.fsm.clear_active_order()
-        self.fsm.go_attract()
-        self.cartChanged.emit()
-        self._show_screen(AppScreen.ATTRACT)
+        # Clear recovery file so timeout from Failure does not re-resume on restart.
+        self._return_to_attract(clear_persisted_order=True)
 
     def _refresh_inventory_idle(self) -> None:
         if self.fsm.screen == AppScreen.ATTRACT:
@@ -413,6 +438,86 @@ class AppController(QObject):
         self._payment_message = text
         self.fsm.status_message = text
         self.statusChanged.emit()
+
+    def _clear_vend_wait(self) -> None:
+        self.vend_wait_timer.stop()
+        self._vend_wait_deadline = None
+        self._vend_wait_seconds_remaining = 0
+        self._vend_wait_active = False
+        self.statusChanged.emit()
+
+    def _start_vend_wait(self) -> None:
+        if self._vend_wait_deadline is not None:
+            return
+        self._vend_wait_deadline = time.monotonic() + self._vend_wait_total
+        self._vend_wait_active = True
+        self._on_vend_wait_tick()
+        self.vend_wait_timer.start()
+
+    def _on_vend_wait_tick(self) -> None:
+        if self._vend_wait_deadline is None:
+            self._clear_vend_wait()
+            return
+        remaining = self._vend_wait_deadline - time.monotonic()
+        self._vend_wait_seconds_remaining = max(0, int(remaining + 0.999))
+        self._vend_wait_active = remaining > 0
+        self.statusChanged.emit()
+        if remaining > 0:
+            return
+        self.vend_wait_timer.stop()
+        self._vend_wait_active = False
+        self._maybe_fire_wait_timeout_cancel()
+
+    def _maybe_fire_wait_timeout_cancel(self) -> None:
+        if self._closing or self._wait_timeout_cancel_in_flight:
+            return
+        if self.fsm.screen != AppScreen.PAYMENT:
+            return
+        if self.fsm.last_order_status != OrderStatus.AUTHORIZED:
+            return
+        order_id = self.fsm.active_order_id
+        if not order_id:
+            return
+        self._wait_timeout_cancel_in_flight = True
+        log_event(logger, "checkout.wait_timeout_fire", order_id=order_id)
+        worker = WaitTimeoutCancelWorker(self.checkout, order_id)
+        self._track(worker)
+
+        def ok(result: str) -> None:
+            self._wait_timeout_cancel_in_flight = False
+            if self._closing:
+                return
+            if result == "cancelled":
+                self._stop_polling()
+                self._clear_vend_wait()
+                msg = "Timed out — payment cancelled."
+                self.fsm.mark_failure(msg)
+                self._result_message = msg
+                self.fsm.clear_active_order()
+                self._show_screen(AppScreen.FAILURE)
+                self._load_inventory(resume=False)
+                return
+            # Claim won the race — keep polling for COMPLETED/FAILED.
+            self._clear_vend_wait()
+            self._set_payment_message("Vending in progress…")
+
+        def err(msg: str) -> None:
+            self._wait_timeout_cancel_in_flight = False
+            if self._closing:
+                return
+            self._stop_polling()
+            self._clear_vend_wait()
+            detail = (
+                "Wait timed out, but payment cancel failed. "
+                f"Please ask staff for help. ({msg})"
+            )
+            self.fsm.mark_failure(detail)
+            self._result_message = detail
+            self._show_screen(AppScreen.FAILURE)
+
+        worker.finished_ok.connect(ok)
+        worker.finished_err.connect(err)
+        worker.start()
 
     def _track(self, worker) -> None:
         self._workers.append(worker)
@@ -558,6 +663,8 @@ class AppController(QObject):
         if self._closing:
             return
         self._stop_polling()
+        self._clear_vend_wait()
+        self._wait_timeout_cancel_in_flight = False
         worker = OrderPollWorker(self.checkout, order_id)
         self._poll_worker = worker
         self._track(worker)
@@ -566,12 +673,17 @@ class AppController(QObject):
             if self._closing or self._poll_worker is not worker:
                 return
             self.fsm.last_order_status = result.status
+            if result.status == OrderStatus.AUTHORIZED:
+                self._start_vend_wait()
+            elif result.status == OrderStatus.VENDING:
+                self._clear_vend_wait()
             self._set_payment_message(result.message)
 
         def on_done(result: PollResult) -> None:
             if self._closing or self._poll_worker is not worker:
                 return
             self._poll_worker = None
+            self._clear_vend_wait()
             self.statusChanged.emit()
             if result.status == OrderStatus.COMPLETED:
                 self.cart.clear()
@@ -592,6 +704,7 @@ class AppController(QObject):
             if self._closing or self._poll_worker is not worker:
                 return
             self._poll_worker = None
+            self._clear_vend_wait()
             self.fsm.mark_failure(msg)
             self._result_message = msg
             self._show_screen(AppScreen.FAILURE)
@@ -631,7 +744,39 @@ class AppController(QObject):
         worker.start()
 
     @Slot()
+    def abandonActiveOrder(self) -> None:  # noqa: N802
+        """
+        Drop local active-order recovery and return home.
+
+        Used when Cancel is disabled (AUTHORIZED/VENDING): we must not call
+        Cloud cancel (races with vend claim). Clearing the file lets the
+        operator leave a stuck resume screen without blocking the kiosk.
+        """
+        order_id = self.fsm.active_order_id
+        log_event(
+            logger,
+            "checkout.abandoned_local",
+            order_id=order_id,
+            status=(
+                self.fsm.last_order_status.value
+                if self.fsm.last_order_status
+                else None
+            ),
+        )
+        self._return_to_attract(clear_persisted_order=True)
+
+    @Slot()
     def finishToAttract(self) -> None:  # noqa: N802
+        # Always clear persisted recovery so Failure/timeout → Done does not
+        # bounce back into Payment/Failure on the next app start.
+        self._return_to_attract(clear_persisted_order=True)
+
+    def _return_to_attract(self, *, clear_persisted_order: bool) -> None:
+        self._stop_polling()
+        self._clear_vend_wait()
+        self._wait_timeout_cancel_in_flight = False
+        if clear_persisted_order:
+            self.order_store.clear()
         self.cart.clear()
         self.cart_model.refresh()
         self.fsm.clear_active_order()
@@ -647,6 +792,7 @@ class AppController(QObject):
         self.idle_timer.stop()
         self.inventory_timer.stop()
         self.theme_timer.stop()
+        self.vend_wait_timer.stop()
         self._stop_polling()
         for worker in list(self._workers):
             if hasattr(worker, "request_stop"):

@@ -100,6 +100,7 @@ class Settings:
     idle_timeout_seconds: float
     poll_interval_seconds: float
     poll_max_attempts: int
+    vend_wait_seconds: float
     inventory_max_age_seconds: float
     inventory_idle_refresh_seconds: float
     fullscreen: bool
@@ -166,7 +167,9 @@ def load_settings(
         cloud_base=cloud_base,
         idle_timeout_seconds=_float_env("IDLE_TIMEOUT_SECONDS", 90.0),
         poll_interval_seconds=_float_env("POLL_INTERVAL_SECONDS", 2.0),
-        poll_max_attempts=_int_env("POLL_MAX_ATTEMPTS", 90),
+        # Cover card wait + VEND_WAIT_SECONDS + post-409 vend settle.
+        poll_max_attempts=_int_env("POLL_MAX_ATTEMPTS", 120),
+        vend_wait_seconds=_float_env("VEND_WAIT_SECONDS", 60.0),
         inventory_max_age_seconds=_float_env("INVENTORY_MAX_AGE_SECONDS", 300.0),
         inventory_idle_refresh_seconds=_float_env(
             "INVENTORY_IDLE_REFRESH_SECONDS", 120.0

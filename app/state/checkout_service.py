@@ -151,6 +151,34 @@ class CheckoutService:
         log_event(logger, "checkout.cancelled", order_id=order_id)
         return True
 
+    def cancel_wait_timeout(self, order_id: str) -> str:
+        """
+        Ask Cloud to release an AUTHORIZED hold after the vend wait expires.
+
+        Returns:
+          "cancelled" — order/PI cancelled
+          "vend_in_progress" — Pi already claimed (HTTP 409); keep polling
+        """
+        try:
+            self.cloud.cancel_order(
+                order_id,
+                reason="Wait timed out",
+                cancel_mode="wait_timeout",
+            )
+        except CloudClientError as exc:
+            if exc.status_code == 409:
+                log_event(
+                    logger,
+                    "checkout.wait_timeout_conflict",
+                    order_id=order_id,
+                    status_code=409,
+                )
+                return "vend_in_progress"
+            raise
+        self.order_store.clear()
+        log_event(logger, "checkout.wait_timeout_cancelled", order_id=order_id)
+        return "cancelled"
+
     def resume_if_needed(self) -> Optional[str]:
         """
         On startup: if a persisted order exists and is non-terminal, return its id

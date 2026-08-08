@@ -106,6 +106,25 @@ class CancelOrderWorker(QThread):
             self.finished_err.emit(str(exc) or type(exc).__name__)
 
 
+class WaitTimeoutCancelWorker(QThread):
+    """POST cancel_mode=wait_timeout; emits cancelled | vend_in_progress."""
+
+    finished_ok = Signal(str)
+    finished_err = Signal(str)
+
+    def __init__(self, service: CheckoutService, order_id: str, parent=None):
+        super().__init__(parent)
+        self._service = service
+        self._order_id = order_id
+
+    def run(self) -> None:
+        try:
+            result = self._service.cancel_wait_timeout(self._order_id)
+            self.finished_ok.emit(result)
+        except Exception as exc:  # noqa: BLE001
+            self.finished_err.emit(str(exc) or type(exc).__name__)
+
+
 class ResumeOrderWorker(QThread):
     finished_ok = Signal(object)  # Optional[str]
     finished_err = Signal(str)

@@ -67,11 +67,20 @@ class CloudClient:
     def get_order(self, order_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/orders/{order_id}")
 
-    def cancel_order(self, order_id: str, reason: str = "Cancelled from kiosk") -> Dict[str, Any]:
+    def cancel_order(
+        self,
+        order_id: str,
+        reason: str = "Cancelled from kiosk",
+        *,
+        cancel_mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"reason": reason}
+        if cancel_mode:
+            payload["cancel_mode"] = cancel_mode
         return self._request(
             "POST",
             f"/orders/{order_id}/cancel",
-            json={"reason": reason},
+            json=payload,
         )
 
     def get_machine_theme(self, *, machine_token: str, machine_id: Optional[str] = None) -> Dict[str, Any]:
