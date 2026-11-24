@@ -88,7 +88,7 @@ def user_message_for_status(status: OrderStatus) -> str:
         OrderStatus.AUTHORIZED: "Payment authorized. Preparing to vend…",
         OrderStatus.VENDING: "Vending your item…",
         OrderStatus.COMPLETED: "Purchase complete.",
-        OrderStatus.PAYMENT_FAILED: "Payment failed. Please try again.",
+        OrderStatus.PAYMENT_FAILED: "Payment didn’t go through.",
         OrderStatus.FAILED: "Vend failed. Your payment was not captured.",
         OrderStatus.CANCELLED: "Purchase cancelled.",
         OrderStatus.UNKNOWN: "Processing order…",

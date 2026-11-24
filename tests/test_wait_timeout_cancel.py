@@ -57,7 +57,7 @@ class TestCheckoutWaitTimeout(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_cancel_wait_timeout_clears_store(self):
+    def test_cancel_wait_timeout_does_not_dismiss_unconfirmed_checkout(self):
         self.cloud.cancel_order.return_value = {"status": "CANCELLED"}
 
         result = self.service.cancel_wait_timeout("order-1")
@@ -68,7 +68,7 @@ class TestCheckoutWaitTimeout(unittest.TestCase):
             reason="Wait timed out",
             cancel_mode="wait_timeout",
         )
-        self.assertIsNone(self.store.load())
+        self.assertIsNotNone(self.store.load())
 
     def test_cancel_wait_timeout_409_keeps_store(self):
         self.cloud.cancel_order.side_effect = CloudClientError(

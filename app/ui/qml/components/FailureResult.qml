@@ -41,7 +41,7 @@ ColumnLayout {
     }
 
     Text {
-        text: "Something went wrong"
+        text: App.paymentRecoveryHelp ? "Payment status unavailable" : "Something went wrong"
         color: Theme.text
         font.family: Theme.fontFamily
         font.pixelSize: Theme.titleFontPx
@@ -65,6 +65,14 @@ ColumnLayout {
     Item { Layout.fillHeight: true }
 
     PrimaryButton {
+        visible: App.paymentRecoveryHelp
+        text: "Check payment status"
+        Layout.fillWidth: true
+        onClicked: App.checkPaymentStatus()
+    }
+
+    PrimaryButton {
+        visible: !App.paymentRecoveryHelp
         text: "Done"
         Layout.fillWidth: true
         onClicked: App.finishToAttract()

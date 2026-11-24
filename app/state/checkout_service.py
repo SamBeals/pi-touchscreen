@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from threading import Lock
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -13,13 +14,16 @@ from app.models.cart import Cart
 from app.models.order import (
     OrderStatus,
     is_cancellable,
-    is_terminal,
     normalize_order_status,
     user_message_for_status,
 )
 from app.state.order_store import ActiveOrder, ActiveOrderStore
 
 logger = logging.getLogger(__name__)
+
+CHECKING_PAYMENT = "Please wait. We’re checking your payment."
+PAYMENT_UNCONFIRMED = "We couldn’t confirm your payment yet. Please ask staff for help."
+
 
 
 @dataclass
@@ -46,8 +50,19 @@ class CheckoutService:
         self.order_store = order_store
         self.poll_interval_seconds = poll_interval_seconds
         self.poll_max_attempts = poll_max_attempts
+        self._checkout_lock = Lock()
+
+    def current_order_id(self) -> Optional[str]:
+        active = self.order_store.load()
+        return active.order_id if active else None
 
     def start_checkout(self, cart: Cart) -> str:
+        with self._checkout_lock:
+            if self.current_order_id():
+                raise CloudClientError("The previous checkout is unresolved")
+            return self._start_checkout_locked(cart)
+
+    def _start_checkout_locked(self, cart: Cart) -> str:
         items = cart.to_order_items()
         if not items:
             raise ValueError("Cart is empty")
@@ -87,14 +102,36 @@ class CheckoutService:
     def poll_once(self, order_id: str, *, attempt: int) -> PollResult:
         data = self.cloud.get_order(order_id)
         raw = data.get("status")
-        status = normalize_order_status(raw if isinstance(raw, str) else None)
+        bound = data.get("order_id") == order_id and data.get("machine_id") == self.machine_id
+        status = normalize_order_status(raw if isinstance(raw, str) and bound else None)
+        has_vend = bool(data.get("vend_job_id"))
+        no_payment_review = not data.get("payment_recovery") and not data.get("operator_review")
+        # A payment-only success webhook can also write COMPLETED. Require the
+        # settled vend fields before dismissing recovery. A bare decline or
+        # cancellation is not proof that a new collection is safe.
+        terminal = bound and has_vend and no_payment_review and (
+            (raw == "COMPLETED" and data.get("payment_status") == "captured"
+             and data.get("physical_outcome") in ("dispensed", "partial"))
+            or (raw == "FAILED" and data.get("payment_status") == "cancelled"
+                and data.get("physical_outcome") == "not_dispensed")
+        )
+        if not terminal and status in {
+            OrderStatus.UNKNOWN, OrderStatus.COMPLETED, OrderStatus.PAYMENT_FAILED,
+            OrderStatus.FAILED, OrderStatus.CANCELLED,
+        }:
+            status = OrderStatus.UNKNOWN
         return PollResult(
             status=status,
             raw_status=raw if isinstance(raw, str) else None,
-            message=user_message_for_status(status),
-            terminal=is_terminal(status),
+            message=CHECKING_PAYMENT if status == OrderStatus.UNKNOWN else user_message_for_status(status),
+            terminal=terminal,
             attempts=attempt,
         )
+
+    def _clear_if_same_order(self, order_id: str) -> None:
+        with self._checkout_lock:
+            if self.current_order_id() == order_id:
+                self.order_store.clear()
 
     def poll_until_terminal(
         self,
@@ -106,29 +143,30 @@ class CheckoutService:
         last = PollResult(
             status=OrderStatus.UNKNOWN,
             raw_status=None,
-            message="Checking order status…",
+            message=CHECKING_PAYMENT,
             terminal=False,
             attempts=0,
         )
         for attempt in range(1, self.poll_max_attempts + 1):
             if should_stop and should_stop():
                 return last
-            last = self.poll_once(order_id, attempt=attempt)
+            try:
+                last = self.poll_once(order_id, attempt=attempt)
+            except CloudClientError:
+                # A lost read is not proof of failure or permission to collect again.
+                last = PollResult(OrderStatus.UNKNOWN, None, CHECKING_PAYMENT, False, attempt)
             if on_update:
                 on_update(last)
             if last.terminal:
-                self.order_store.clear()
+                self._clear_if_same_order(order_id)
                 return last
             time.sleep(self.poll_interval_seconds)
 
         timed_out = PollResult(
             status=OrderStatus.UNKNOWN,
             raw_status=last.raw_status,
-            message=(
-                "Payment/vend started, but final status was not confirmed. "
-                "Please ask staff for help."
-            ),
-            terminal=True,
+            message=PAYMENT_UNCONFIRMED,
+            terminal=False,
             attempts=self.poll_max_attempts,
         )
         # Keep active order for recovery — status may still settle.
@@ -147,8 +185,7 @@ class CheckoutService:
             )
             return False
         self.cloud.cancel_order(order_id)
-        self.order_store.clear()
-        log_event(logger, "checkout.cancelled", order_id=order_id)
+        log_event(logger, "checkout.cancel_requested", order_id=order_id)
         return True
 
     def cancel_wait_timeout(self, order_id: str) -> str:
@@ -175,31 +212,9 @@ class CheckoutService:
                 )
                 return "vend_in_progress"
             raise
-        self.order_store.clear()
-        log_event(logger, "checkout.wait_timeout_cancelled", order_id=order_id)
+        log_event(logger, "checkout.wait_timeout_response", order_id=order_id)
         return "cancelled"
 
     def resume_if_needed(self) -> Optional[str]:
-        """
-        On startup: if a persisted order exists and is non-terminal, return its id
-        so the UI can resume polling before allowing a new checkout.
-        """
-        active = self.order_store.load()
-        if not active:
-            return None
-        try:
-            data = self.cloud.get_order(active.order_id)
-        except CloudClientError:
-            # Keep file; UI should show recovery/waiting.
-            return active.order_id
-        status = normalize_order_status(data.get("status") if isinstance(data.get("status"), str) else None)
-        if is_terminal(status):
-            self.order_store.clear()
-            return None
-        log_event(
-            logger,
-            "checkout.resume",
-            order_id=active.order_id,
-            status=status.value,
-        )
-        return active.order_id
+        """Resume the original order; do not start a replacement collection."""
+        return self.current_order_id()

@@ -168,11 +168,10 @@ ColumnLayout {
         onClicked: App.cancelCheckout()
     }
 
-    // After AUTHORIZED/VENDING, Cloud cancel is unsafe for the user button.
-    // Wait-timeout cancel is automatic. Back to home is local escape only.
+    // Leaving the payment view does not cancel or unlock its checkout.
     SecondaryButton {
-        text: "Back to home"
-        visible: !App.cancelEnabled
+        text: "Leave payment screen"
+        visible: !App.cancelEnabled && !App.paymentStartPending
         Layout.fillWidth: true
         onClicked: App.abandonActiveOrder()
     }
