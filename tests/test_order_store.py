@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.state.order_store import ActiveOrder, ActiveOrderStore
+from app.state.order_store import ActiveOrder, ActiveOrderStore, RecoveryRecordError
 
 
 class TestOrderStore(unittest.TestCase):
@@ -34,23 +34,25 @@ class TestOrderStore(unittest.TestCase):
             leftovers = list(Path(tmp).glob("active_order.*.tmp"))
             self.assertEqual(leftovers, [])
 
-    def test_corrupted_file_does_not_crash(self):
+    def test_corrupted_file_is_preserved_for_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
             path.write_text("{not-json", encoding="utf-8")
             store = ActiveOrderStore(path, expected_machine_id="machine_002")
-            self.assertIsNone(store.load())
-            # Corrupted file removed so boot can continue cleanly
-            self.assertFalse(path.exists())
+            with self.assertRaises(RecoveryRecordError):
+                store.load()
+            self.assertTrue(path.exists())
 
     def test_truncated_empty_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
             path.write_text("   \n", encoding="utf-8")
             store = ActiveOrderStore(path, expected_machine_id="machine_002")
-            self.assertIsNone(store.load())
+            with self.assertRaises(RecoveryRecordError):
+                store.load()
+            self.assertTrue(path.exists())
 
-    def test_machine_id_mismatch_ignored(self):
+    def test_machine_id_mismatch_blocks_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
             path.write_text(
@@ -64,7 +66,8 @@ class TestOrderStore(unittest.TestCase):
                 encoding="utf-8",
             )
             store = ActiveOrderStore(path, expected_machine_id="machine_002")
-            self.assertIsNone(store.load())
+            with self.assertRaises(RecoveryRecordError):
+                store.load()
             # File preserved (do not destroy another machine's record)
             self.assertTrue(path.exists())
 

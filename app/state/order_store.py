@@ -15,6 +15,10 @@ from app.logging_setup import log_event
 logger = logging.getLogger(__name__)
 
 
+class RecoveryRecordError(RuntimeError):
+    """A pending checkout record could not be read safely."""
+
+
 @dataclass
 class ActiveOrder:
     order_id: str
@@ -28,48 +32,27 @@ class ActiveOrderStore:
         self.expected_machine_id = expected_machine_id.strip()
 
     def load(self) -> Optional[ActiveOrder]:
-        if not self.path.is_file():
-            return None
+        """Only a missing file means no pending checkout; preserve bad evidence."""
         try:
             raw = self.path.read_text(encoding="utf-8")
-            if not raw.strip():
-                log_event(logger, "active_order.empty_file")
-                self._safe_unlink()
-                return None
-            data = json.loads(raw)
-            if not isinstance(data, dict):
-                log_event(logger, "active_order.malformed", reason="not_object")
-                self._safe_unlink()
-                return None
-            order_id = str(data.get("order_id") or "").strip()
-            machine_id = str(data.get("machine_id") or "").strip()
-            if not order_id:
-                log_event(logger, "active_order.malformed", reason="missing_order_id")
-                self._safe_unlink()
-                return None
-            if machine_id != self.expected_machine_id:
-                log_event(
-                    logger,
-                    "active_order.machine_mismatch",
-                    expected_machine_id=self.expected_machine_id,
-                    file_machine_id=machine_id or "(missing)",
-                )
-                # Do not clear automatically — another machine's file should not
-                # be destroyed if data dirs were shared incorrectly; just ignore.
-                return None
-            return ActiveOrder(
-                order_id=order_id,
-                amount_cents=int(data.get("amount_cents") or 0),
-                machine_id=machine_id,
-            )
-        except Exception as exc:  # noqa: BLE001
-            log_event(
-                logger,
-                "active_order.load_failed",
-                error=type(exc).__name__,
-            )
-            self._safe_unlink()
+        except FileNotFoundError:
             return None
+        except (OSError, UnicodeError) as exc:
+            raise RecoveryRecordError("Cannot read active checkout record") from exc
+        try:
+            data = json.loads(raw)
+            order_id = data["order_id"]
+            machine_id = data["machine_id"]
+            amount = data["amount_cents"]
+            if not isinstance(order_id, str) or not order_id.strip():
+                raise ValueError("missing order ID")
+            if machine_id != self.expected_machine_id:
+                raise ValueError("machine mismatch")
+            if type(amount) is not int or amount <= 0:
+                raise ValueError("invalid amount")
+        except (ValueError, TypeError, KeyError) as exc:
+            raise RecoveryRecordError("Cannot validate active checkout record") from exc
+        return ActiveOrder(order_id, amount, machine_id)
 
     def save(self, order: ActiveOrder) -> None:
         if order.machine_id != self.expected_machine_id:
@@ -92,6 +75,12 @@ class ActiveOrderStore:
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp_name, self.path)
+            # Payment may be sent immediately after save; persist the rename too.
+            dir_fd = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
         except Exception:
             try:
                 os.unlink(tmp_name)

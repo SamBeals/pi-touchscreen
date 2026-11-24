@@ -16,8 +16,10 @@ from app.models.cart import Cart
 from app.models.order import OrderStatus
 from app.models.product import Product
 from app.state.app_state import AppScreen, AppStateMachine, checkout_gate_reason
-from app.state.checkout_service import CheckoutService, PollResult
-from app.state.order_store import ActiveOrderStore
+from app.state.checkout_service import (
+    CHECKING_PAYMENT, PAYMENT_UNCONFIRMED, CheckoutService, PollResult,
+)
+from app.state.order_store import ActiveOrderStore, RecoveryRecordError
 from app.ui.layout import browse_column_count, current_profile
 from app.ui.list_models import CartModel, CatalogModel
 from app.ui.theme_bridge import ThemeBridge
@@ -94,6 +96,9 @@ class AppController(QObject):
         self._workers: List = []
         self._poll_worker: Optional[OrderPollWorker] = None
         self._closing = False
+        self._recovering_payment = False
+        self._recovery_help = False
+        self._payment_start_in_flight = False
         self._detail_qty = 1
         profile = current_profile()
         self._browse_viewport_width = profile.window_width
@@ -186,7 +191,15 @@ class AppController(QObject):
 
     @Property(bool, notify=statusChanged)
     def cancelEnabled(self) -> bool:  # noqa: N802
-        return self.fsm.cancel_allowed()
+        return not self._recovering_payment and self.fsm.cancel_allowed()
+
+    @Property(bool, notify=statusChanged)
+    def paymentStartPending(self) -> bool:  # noqa: N802
+        return self._payment_start_in_flight
+
+    @Property(bool, notify=statusChanged)
+    def paymentRecoveryHelp(self) -> bool:  # noqa: N802
+        return self._recovery_help
 
     @Property(bool, notify=statusChanged)
     def vendWaitActive(self) -> bool:  # noqa: N802
@@ -264,9 +277,9 @@ class AppController(QObject):
             cloud_base=settings.cloud_base,
             theme_id=self.theme.id,
         )
-        self._run_health_then_inventory(resume=True)
+        self._try_resume_order()
 
-    def _run_health_then_inventory(self, *, resume: bool) -> None:
+    def _run_health_then_inventory(self) -> None:
         if self._closing:
             return
         worker = CloudHealthWorker(self.cloud)
@@ -276,12 +289,12 @@ class AppController(QObject):
             if self._closing:
                 return
             self.fsm.cloud_reachable = ok
-            self._load_inventory(resume=resume)
+            self._load_inventory(boot=True)
 
         worker.finished_ok.connect(on_health)
         worker.start()
 
-    def _load_inventory(self, *, resume: bool) -> None:
+    def _load_inventory(self, *, boot: bool = False) -> None:
         if self._closing:
             return
         worker = InventoryLoadWorker(self.inventory_client)
@@ -291,15 +304,18 @@ class AppController(QObject):
             if self._closing:
                 return
             self._apply_snapshot(snap)
-            if resume:
-                self._try_resume_order()
+            if boot:
+                self.fsm.boot_ok()
+                self._show_screen(AppScreen.ATTRACT)
+                self.inventory_timer.start()
+                self.theme_timer.start()
             elif self.fsm.screen in {AppScreen.ATTRACT, AppScreen.BROWSE}:
                 self.statusChanged.emit()
 
         def err(msg: str) -> None:
             if self._closing:
                 return
-            if self.snapshot is None:
+            if boot and self.snapshot is None:
                 self.fsm.boot_fatal(f"Inventory load failed: {msg}")
                 self._show_screen(AppScreen.FATAL)
             else:
@@ -329,29 +345,47 @@ class AppController(QObject):
             if self._closing:
                 return
             if order_id:
-                self.fsm.begin_payment(order_id)
-                self._set_payment_message("Resuming unfinished order…")
-                self._show_screen(AppScreen.PAYMENT)
-                self._start_polling(order_id)
+                self._begin_payment_recovery(order_id)
             else:
-                self.fsm.boot_ok()
-                self._show_screen(AppScreen.ATTRACT)
-                self.inventory_timer.start()
-                self.theme_timer.start()
-                self._bump_idle()
+                self._run_health_then_inventory()
 
         def err(msg: str) -> None:
             if self._closing:
                 return
             log_event(logger, "checkout.resume_failed", error=msg)
-            self.fsm.boot_ok()
-            self._show_screen(AppScreen.ATTRACT)
-            self.inventory_timer.start()
-            self.theme_timer.start()
+            self._show_payment_recovery_help()
 
         worker.finished_ok.connect(ok)
         worker.finished_err.connect(err)
         worker.start()
+
+    def _show_payment_recovery_help(self) -> None:
+        self._recovering_payment = True
+        self._recovery_help = True
+        self.fsm.mark_failure(PAYMENT_UNCONFIRMED)
+        self._result_message = PAYMENT_UNCONFIRMED
+        self._show_screen(AppScreen.FAILURE)
+
+    def _begin_payment_recovery(self, order_id: str) -> None:
+        self._recovering_payment = True
+        self._recovery_help = False
+        self.fsm.begin_payment(order_id)
+        self._set_payment_message(CHECKING_PAYMENT)
+        self._show_screen(AppScreen.PAYMENT)
+        self._start_polling(order_id)
+
+    @Slot()
+    def checkPaymentStatus(self) -> None:  # noqa: N802
+        if self._closing or not self._recovery_help or self.fsm.screen != AppScreen.FAILURE:
+            return
+        try:
+            order_id = self.checkout.current_order_id()
+        except RecoveryRecordError:
+            order_id = None
+        if order_id:
+            self._begin_payment_recovery(order_id)
+        else:
+            self._show_payment_recovery_help()
 
     def _show_screen(self, screen: AppScreen) -> None:
         self.fsm.screen = screen
@@ -373,12 +407,11 @@ class AppController(QObject):
         if self.fsm.screen in {AppScreen.PAYMENT, AppScreen.BOOT, AppScreen.FATAL}:
             return
         log_event(logger, "app.idle_timeout", screen=self.fsm.screen.value)
-        # Clear recovery file so timeout from Failure does not re-resume on restart.
-        self._return_to_attract(clear_persisted_order=True)
+        self._return_to_attract()
 
     def _refresh_inventory_idle(self) -> None:
         if self.fsm.screen == AppScreen.ATTRACT:
-            self._load_inventory(resume=False)
+            self._load_inventory()
             health = CloudHealthWorker(self.cloud)
             self._track(health)
 
@@ -485,17 +518,10 @@ class AppController(QObject):
 
         def ok(result: str) -> None:
             self._wait_timeout_cancel_in_flight = False
-            if self._closing:
+            if self._closing or self.fsm.active_order_id != order_id:
                 return
             if result == "cancelled":
-                self._stop_polling()
-                self._clear_vend_wait()
-                msg = "Timed out — payment cancelled."
-                self.fsm.mark_failure(msg)
-                self._result_message = msg
-                self.fsm.clear_active_order()
-                self._show_screen(AppScreen.FAILURE)
-                self._load_inventory(resume=False)
+                self._begin_payment_recovery(order_id)
                 return
             # Claim won the race — keep polling for COMPLETED/FAILED.
             self._clear_vend_wait()
@@ -503,17 +529,10 @@ class AppController(QObject):
 
         def err(msg: str) -> None:
             self._wait_timeout_cancel_in_flight = False
-            if self._closing:
+            if self._closing or self.fsm.active_order_id != order_id:
                 return
-            self._stop_polling()
-            self._clear_vend_wait()
-            detail = (
-                "Wait timed out, but payment cancel failed. "
-                f"Please ask staff for help. ({msg})"
-            )
-            self.fsm.mark_failure(detail)
-            self._result_message = detail
-            self._show_screen(AppScreen.FAILURE)
+            log_event(logger, "checkout.wait_timeout_unconfirmed", error=msg)
+            self._begin_payment_recovery(order_id)
 
         worker.finished_ok.connect(ok)
         worker.finished_err.connect(err)
@@ -610,6 +629,18 @@ class AppController(QObject):
 
     @Slot()
     def startCheckout(self) -> None:  # noqa: N802
+        # Changing screen synchronously consumes this input before any worker
+        # starts, so a queued second press from the cart cannot start checkout.
+        if self._closing or self.fsm.screen != AppScreen.CART:
+            return
+        try:
+            order_id = self.checkout.current_order_id()
+        except RecoveryRecordError:
+            self._show_payment_recovery_help()
+            return
+        if order_id:
+            self._begin_payment_recovery(order_id)
+            return
         gate = checkout_gate_reason(
             cloud_reachable=self.fsm.cloud_reachable,
             inventory_fresh=self.fsm.inventory_fresh,
@@ -619,6 +650,7 @@ class AppController(QObject):
             return
         if self.cart.item_count() <= 0:
             return
+        self._payment_start_in_flight = True
         self.fsm.screen = AppScreen.PAYMENT
         self.fsm.status_message = "Preparing checkout…"
         self.fsm.error_message = ""
@@ -631,15 +663,31 @@ class AppController(QObject):
         self._track(worker)
 
         def ok(order_id: str) -> None:
+            self._payment_start_in_flight = False
+            if self._closing:
+                return
             self.fsm.begin_payment(order_id)
             self._set_payment_message("Waiting for card…")
             self.statusChanged.emit()
             self._start_polling(order_id)
 
         def err(msg: str) -> None:
-            self.fsm.mark_failure(msg)
-            self._result_message = msg
-            self._show_screen(AppScreen.FAILURE)
+            self._payment_start_in_flight = False
+            if self._closing:
+                return
+            log_event(logger, "checkout.start_failed", error=msg)
+            try:
+                order_id = self.checkout.current_order_id()
+            except RecoveryRecordError:
+                self._show_payment_recovery_help()
+                return
+            if order_id:
+                self._begin_payment_recovery(order_id)
+            else:
+                message = "Couldn’t start checkout. Please ask staff for help."
+                self.fsm.mark_failure(message)
+                self._result_message = message
+                self._show_screen(AppScreen.FAILURE)
 
         worker.finished_ok.connect(ok)
         worker.finished_err.connect(err)
@@ -673,11 +721,16 @@ class AppController(QObject):
             if self._closing or self._poll_worker is not worker:
                 return
             self.fsm.last_order_status = result.status
-            if result.status == OrderStatus.AUTHORIZED:
+            if result.status == OrderStatus.AUTHORIZED and not self._recovering_payment:
                 self._start_vend_wait()
-            elif result.status == OrderStatus.VENDING:
+            elif result.status in {OrderStatus.VENDING, OrderStatus.UNKNOWN}:
                 self._clear_vend_wait()
-            self._set_payment_message(result.message)
+            recovery_message = (
+                CHECKING_PAYMENT if self._recovering_payment and not result.terminal
+                and result.status in {OrderStatus.CREATED, OrderStatus.AUTHORIZING}
+                else result.message
+            )
+            self._set_payment_message(recovery_message)
 
         def on_done(result: PollResult) -> None:
             if self._closing or self._poll_worker is not worker:
@@ -685,29 +738,39 @@ class AppController(QObject):
             self._poll_worker = None
             self._clear_vend_wait()
             self.statusChanged.emit()
-            if result.status == OrderStatus.COMPLETED:
+            if result.status == OrderStatus.COMPLETED and result.terminal:
+                self._recovering_payment = False
+                self._recovery_help = False
                 self.cart.clear()
                 self.cart_model.refresh()
                 self.cartChanged.emit()
                 self.fsm.mark_success()
                 self._result_message = result.message
                 self._show_screen(AppScreen.SUCCESS)
-                self._load_inventory(resume=False)
-                QTimer.singleShot(5000, self.finishToAttract)
-            elif result.terminal:
+                self._load_inventory()
+                QTimer.singleShot(
+                    5000,
+                    lambda: self.finishToAttract()
+                    if self.fsm.screen == AppScreen.SUCCESS and self.fsm.active_order_id == order_id
+                    else None,
+                )
+            elif result.status == OrderStatus.FAILED and result.terminal:
+                self._recovering_payment = False
+                self._recovery_help = False
                 self.fsm.mark_failure(result.message)
                 self._result_message = result.message
                 self._show_screen(AppScreen.FAILURE)
-                self._load_inventory(resume=False)
+                self._load_inventory()
+            else:
+                self._show_payment_recovery_help()
 
         def on_err(msg: str) -> None:
             if self._closing or self._poll_worker is not worker:
                 return
             self._poll_worker = None
             self._clear_vend_wait()
-            self.fsm.mark_failure(msg)
-            self._result_message = msg
-            self._show_screen(AppScreen.FAILURE)
+            log_event(logger, "checkout.poll_failed", error=msg)
+            self._show_payment_recovery_help()
 
         worker.status_update.connect(on_update)
         worker.finished_ok.connect(on_done)
@@ -717,71 +780,57 @@ class AppController(QObject):
     @Slot()
     def cancelCheckout(self) -> None:  # noqa: N802
         order_id = self.fsm.active_order_id
-        if not order_id or not self.fsm.cancel_allowed():
+        if not order_id or not self.cancelEnabled:
             return
         self._stop_polling()
+        self._recovering_payment = True
+        self._set_payment_message(CHECKING_PAYMENT)
         worker = CancelOrderWorker(
             self.checkout, order_id, self.fsm.last_order_status
         )
         self._track(worker)
 
-        def ok(cancelled: bool) -> None:
-            if cancelled:
-                self.fsm.mark_failure("Purchase cancelled.")
-                self._result_message = "Purchase cancelled."
-                self.fsm.clear_active_order()
-                self._show_screen(AppScreen.FAILURE)
-            else:
-                self.toastRequested.emit(
-                    "Cancel unavailable",
-                    "This order can no longer be cancelled.",
-                )
+        def resume(*_args) -> None:
+            if not self._closing and self.fsm.active_order_id == order_id:
+                self._begin_payment_recovery(order_id)
 
-        worker.finished_ok.connect(ok)
-        worker.finished_err.connect(
-            lambda msg: self.toastRequested.emit("Cancel failed", msg)
-        )
+        worker.finished_ok.connect(resume)
+        worker.finished_err.connect(resume)
         worker.start()
 
     @Slot()
     def abandonActiveOrder(self) -> None:  # noqa: N802
-        """
-        Drop local active-order recovery and return home.
-
-        Used when Cancel is disabled (AUTHORIZED/VENDING): we must not call
-        Cloud cancel (races with vend claim). Clearing the file lets the
-        operator leave a stuck resume screen without blocking the kiosk.
-        """
-        order_id = self.fsm.active_order_id
-        log_event(
-            logger,
-            "checkout.abandoned_local",
-            order_id=order_id,
-            status=(
-                self.fsm.last_order_status.value
-                if self.fsm.last_order_status
-                else None
-            ),
-        )
-        self._return_to_attract(clear_persisted_order=True)
+        self._return_to_attract()
 
     @Slot()
     def finishToAttract(self) -> None:  # noqa: N802
-        # Always clear persisted recovery so Failure/timeout → Done does not
-        # bounce back into Payment/Failure on the next app start.
-        self._return_to_attract(clear_persisted_order=True)
+        self._return_to_attract()
 
-    def _return_to_attract(self, *, clear_persisted_order: bool) -> None:
+    def _return_to_attract(self) -> None:
+        if self._closing or self._payment_start_in_flight:
+            return
         self._stop_polling()
         self._clear_vend_wait()
         self._wait_timeout_cancel_in_flight = False
-        if clear_persisted_order:
-            self.order_store.clear()
         self.cart.clear()
         self.cart_model.refresh()
         self.fsm.clear_active_order()
-        self.fsm.go_attract()
         self.cartChanged.emit()
+        try:
+            pending = bool(self.checkout.current_order_id())
+        except RecoveryRecordError:
+            pending = True
+        if pending or self._recovery_help:
+            # Clear customer display and cart, not the order recovery record.
+            self._show_payment_recovery_help()
+            return
+        self._recovering_payment = False
+        self._recovery_help = False
+        if self.snapshot is None or not self.fsm.cloud_reachable:
+            self._show_screen(AppScreen.BOOT)
+            self._run_health_then_inventory()
+            return
+        self.fsm.go_attract()
         self._show_screen(AppScreen.ATTRACT)
         self.inventory_timer.start()
         self.theme_timer.start()
